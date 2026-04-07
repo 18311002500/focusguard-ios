@@ -39,14 +39,25 @@ jobs:
     
     - name: Generate Xcode Project
       run: |
-        xcodegen generate
-        ls -la *.xcodeproj
+        echo "=== Current directory ==="
+        pwd
+        ls -la
+        
+        echo ""
+        echo "=== Checking project.yml ==="
+        cat project.yml | head -30
+        
+        echo ""
+        echo "=== Running xcodegen ==="
+        xcodegen generate 2>&1
+        
+        echo ""
+        echo "=== Checking generated project ==="
+        ls -la *.xcodeproj 2>/dev/null || echo "No xcodeproj found"
+        
         echo ""
         echo "=== Project Structure ==="
         find . -name "*.swift" | head -20
-        echo ""
-        echo "=== Checking entitlements ==="
-        cat FocusGuard.entitlements || echo "No entitlements file"
     
     - name: Show Xcode Version
       run: xcodebuild -version
