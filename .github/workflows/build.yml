@@ -23,8 +23,16 @@ jobs:
         echo '        SWIFT_VERSION: "5.9"' >> project.yml
         echo '        TARGETED_DEVICE_FAMILY: "1"' >> project.yml
         echo '        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon' >> project.yml
+        echo '=== project.yml ==='
         cat project.yml
-        xcodegen generate --project .
+        echo '=== Running xcodegen ==='
+        xcodegen generate --project . 2>&1 || {
+          echo "xcodegen failed with exit code $?"
+          exit 1
+        }
+        echo '=== Checking generated files ==='
+        ls -la *.xcodeproj 2>/dev/null || echo "No xcodeproj found"
+        ls -la
     - name: Check Project
       run: |
         ls -la *.xcodeproj
