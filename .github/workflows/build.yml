@@ -33,32 +33,38 @@ jobs:
       with:
         xcode-version: '15.2'
     
-    - name: Check files
+    - name: Debug Environment
       run: |
         echo "=== Current directory ==="
         pwd
         ls -la
         
         echo ""
-        echo "=== Swift files ==="
-        ls -la *.swift | wc -l
-        ls *.swift
+        echo "=== Check for problematic files ==="
+        find . -name "*.yml" -o -name "*.yaml" | grep -v ".github"
         
         echo ""
-        echo "=== Check if xcodeproj exists ==="
-        ls -la *.xcodeproj 2>/dev/null || echo "No xcodeproj found"
+        echo "=== Check Swift files ==="
+        ls -la *.swift 2>/dev/null | head -5 || echo "No swift files in root"
+        
+        echo ""
+        echo "=== Check for Package.swift ==="
+        ls -la Package.swift 2>/dev/null || echo "No Package.swift"
     
-    - name: Generate Xcode Project with xcodegen
+    - name: Install xcodegen
       run: |
         brew install xcodegen
+        which xcodegen
+        xcodegen version
+    
+    - name: Remove problematic files and generate project
+      run: |
+        # Remove any potentially problematic files
+        rm -f Package.swift
+        rm -f project.yml
         
-        echo "=== Generating project ==="
-        xcodegen generate --project . 2>&1 || {
-          echo "xcodegen failed, trying without project.yml..."
-          rm -f project.yml
-          
-          # Create minimal project.yml
-          cat > project.yml << 'EOF'
+        # Create a minimal project.yml
+        cat > project.yml << 'YAMLEOF'
 name: FocusGuard
 targets:
   FocusGuard:
@@ -83,32 +89,34 @@ targets:
         TARGETED_DEVICE_FAMILY: "1"
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         SUPPORTS_MACCATALYST: NO
-EOF
-          
-          echo "=== Trying again with minimal project.yml ==="
-          xcodegen generate --project . 2>&1
-        }
+YAMLEOF
+        
+        echo "=== Generated project.yml ==="
+        cat project.yml
         
         echo ""
-        echo "=== Check generated project ==="
-        ls -la *.xcodeproj 2>/dev/null || echo "Still no xcodeproj"
-      continue-on-error: true
-    
-    - name: Build with xcodebuild
-      if: success()
-      run: |
+        echo "=== Running xcodegen ==="
+        xcodegen generate --project . 2>&1
+        
+        echo ""
+        echo "=== Check result ==="
         if [ -d "FocusGuard.xcodeproj" ]; then
-          echo "Building with xcodebuild..."
-          xcodebuild -project FocusGuard.xcodeproj \
-                     -scheme FocusGuard \
-                     -destination 'platform=iOS Simulator,name=iPhone 15,OS=17.2' \
-                     -configuration Debug \
-                     build \
-                     CODE_SIGNING_REQUIRED=NO \
-                     CODE_SIGNING_ALLOWED=NO
+          echo "SUCCESS: Project generated"
+          ls -la FocusGuard.xcodeproj/
         else
-          echo "No Xcode project found, skipping build"
+          echo "FAILED: No project generated"
+          exit 1
         fi
+    
+    - name: Build Project
+      run: |
+        xcodebuild -project FocusGuard.xcodeproj \
+                   -scheme FocusGuard \
+                   -destination 'platform=iOS Simulator,name=iPhone 15,OS=17.2' \
+                   -configuration Debug \
+                   build \
+                   CODE_SIGNING_REQUIRED=NO \
+                   CODE_SIGNING_ALLOWED=NO 2>&1 | head -500
       continue-on-error: true
 
   build-and-upload:
@@ -127,7 +135,34 @@ EOF
     
     - name: Generate Xcode Project
       run: |
+        rm -f Package.swift project.yml
         brew install xcodegen
+        cat > project.yml << 'YAMLEOF'
+name: FocusGuard
+targets:
+  FocusGuard:
+    type: application
+    platform: iOS
+    deploymentTarget: "16.0"
+    sources:
+      - path: .
+        excludes:
+          - .git
+          - .github
+          - certificates
+          - "*.md"
+          - "*.sh"
+          - "*.py"
+          - "*.yml"
+          - "project.yml"
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.baobao.focusguard
+        SWIFT_VERSION: "5.9"
+        TARGETED_DEVICE_FAMILY: "1"
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        SUPPORTS_MACCATALYST: NO
+YAMLEOF
         xcodegen generate --project .
     
     # 安装证书
