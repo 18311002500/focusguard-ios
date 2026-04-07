@@ -5,6 +5,13 @@ jobs:
     runs-on: macos-14
     steps:
     - uses: actions/checkout@v4
+    - name: Check Project
+      run: |
+        echo "=== Checking project files ==="
+        ls -la FocusGuard.xcodeproj/
+        echo ""
+        echo "=== Available schemes ==="
+        xcodebuild -project FocusGuard.xcodeproj -list 2>&1 || true
     - name: Build
       run: |
         xcodebuild -project FocusGuard.xcodeproj \
@@ -12,4 +19,12 @@ jobs:
                    -destination 'generic/platform=iOS' \
                    -archivePath app.xcarchive \
                    archive \
-                   CODE_SIGNING_REQUIRED=NO
+                   CODE_SIGNING_REQUIRED=NO 2>&1 || {
+          echo "Build failed, trying without scheme..."
+          xcodebuild -project FocusGuard.xcodeproj \
+                     -destination 'generic/platform=iOS' \
+                     -archivePath app.xcarchive \
+                     archive \
+                     CODE_SIGNING_REQUIRED=NO 2>&1
+        }
+
