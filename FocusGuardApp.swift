@@ -7,7 +7,11 @@
 
 import SwiftUI
 import SwiftData
+
+// ScreenTime API 只在真机上可用
+#if !targetEnvironment(simulator)
 import FamilyControls
+#endif
 
 @main
 struct FocusGuardApp: App {

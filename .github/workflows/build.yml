@@ -57,11 +57,20 @@ jobs:
     # 编译项目（模拟器）
     - name: Build for Simulator
       run: |
-        # 列出可用的 scheme
-        echo "=== Available Schemes ==="
-        xcodebuild -project FocusGuard.xcodeproj -list
+        # 首先检查项目文件
+        echo "=== Checking project files ==="
+        ls -la *.xcodeproj 2>/dev/null || echo "No xcodeproj found"
+        ls -la *.swift | head -10
         
-        # 尝试构建
+        # 列出可用的 scheme
+        echo ""
+        echo "=== Available Schemes ==="
+        xcodebuild -project FocusGuard.xcodeproj -list 2>&1 | head -50
+        
+        # 尝试构建，捕获所有输出
+        echo ""
+        echo "=== Starting Build ==="
+        set -o pipefail
         xcodebuild -project FocusGuard.xcodeproj \
                    -scheme FocusGuard \
                    -destination 'platform=iOS Simulator,name=iPhone 15,OS=17.2' \
@@ -69,11 +78,11 @@ jobs:
                    build \
                    CODE_SIGNING_REQUIRED=NO \
                    CODE_SIGNING_ALLOWED=NO \
-                   2>&1 | tee build.log
+                   2>&1 | tee build.log | head -500
         
-        # 检查退出码
         exit_code=${PIPESTATUS[0]}
-        echo "Exit code: $exit_code"
+        echo ""
+        echo "=== Exit code: $exit_code ==="
         exit $exit_code
       continue-on-error: true
     
