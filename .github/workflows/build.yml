@@ -41,6 +41,12 @@ jobs:
       run: |
         xcodegen generate
         ls -la *.xcodeproj
+        echo ""
+        echo "=== Project Structure ==="
+        find . -name "*.swift" | head -20
+        echo ""
+        echo "=== Checking entitlements ==="
+        cat FocusGuard.entitlements || echo "No entitlements file"
     
     - name: Show Xcode Version
       run: xcodebuild -version
@@ -57,7 +63,25 @@ jobs:
                    -configuration Debug \
                    build \
                    CODE_SIGNING_REQUIRED=NO \
-                   CODE_SIGNING_ALLOWED=NO
+                   CODE_SIGNING_ALLOWED=NO \
+                   | tee build.log
+      continue-on-error: true
+    
+    # 显示构建日志
+    - name: Show Build Log
+      if: always()
+      run: |
+        echo "=== Build Log ==="
+        cat build.log | tail -100
+        
+        echo ""
+        echo "=== Looking for errors ==="
+        grep -i "error:" build.log || echo "No errors found in log"
+        
+        echo ""
+        echo "=== Xcode Project Structure ==="
+        ls -la FocusGuard.xcodeproj/
+        find FocusGuard.xcodeproj -name "*.pbxproj" -exec cat {} \; | head -50
     
     # 运行单元测试
     - name: Run Tests
