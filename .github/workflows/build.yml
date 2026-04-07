@@ -45,19 +45,32 @@ jobs:
         
         echo ""
         echo "=== Checking project.yml ==="
-        cat project.yml | head -30
+        cat project.yml
+        
+        echo ""
+        echo "=== Checking for required files ==="
+        ls -la Info.plist 2>/dev/null || echo "Info.plist not found"
+        ls -la FocusGuard.entitlements 2>/dev/null || echo "FocusGuard.entitlements not found"
+        ls -la Assets.xcassets 2>/dev/null || echo "Assets.xcassets not found"
         
         echo ""
         echo "=== Running xcodegen ==="
-        xcodegen generate 2>&1
+        xcodegen generate --project . 2>&1 || {
+          echo "xcodegen failed with exit code $?"
+          exit 1
+        }
         
         echo ""
         echo "=== Checking generated project ==="
         ls -la *.xcodeproj 2>/dev/null || echo "No xcodeproj found"
         
-        echo ""
-        echo "=== Project Structure ==="
-        find . -name "*.swift" | head -20
+        if [ -d "FocusGuard.xcodeproj" ]; then
+          echo "Project generated successfully"
+          ls -la FocusGuard.xcodeproj/
+        else
+          echo "ERROR: Project not generated"
+          exit 1
+        fi
     
     - name: Show Xcode Version
       run: xcodebuild -version
