@@ -1,0 +1,148 @@
+name: Generate iOS Certificates
+
+on:
+  workflow_dispatch:
+    inputs:
+      apple_id:
+        description: 'Apple Developer Apple ID (邮箱)'
+        required: true
+        type: string
+      apple_password:
+        description: 'Apple Developer 密码'
+        required: true
+        type: string
+      team_id:
+        description: 'Team ID (10位字符)'
+        required: true
+        default: '54LA8Y9L27'
+        type: string
+      bundle_id:
+        description: 'Bundle ID'
+        required: true
+        default: 'com.baobao.focusguard'
+        type: string
+
+jobs:
+  generate-csr:
+    name: Generate Certificate Signing Request
+    runs-on: macos-14
+    
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+    
+    - name: Generate CSR and Private Key
+      run: |
+        # 创建证书目录
+        mkdir -p certificates
+        
+        # 生成私钥
+        openssl genrsa -out certificates/private.key 2048
+        
+        # 生成 CSR
+        openssl req -new -key certificates/private.key \
+          -out certificates/CertificateSigningRequest.certSigningRequest \
+          -subj "/emailAddress=${{ github.event.inputs.apple_id }}/CN=BAOBAO YANG/C=CN"
+        
+        echo "CSR 和私钥已生成"
+    
+    - name: Upload CSR
+      uses: actions/upload-artifact@v4
+      with:
+        name: csr-and-key
+        path: |
+          certificates/CertificateSigningRequest.certSigningRequest
+          certificates/private.key
+        retention-days: 7
+    
+    - name: Display Instructions
+      run: |
+        echo "=========================================="
+        echo "CSR 文件已生成！"
+        echo "=========================================="
+        echo ""
+        echo "下一步操作："
+        echo "1. 下载 artifacts 中的 'csr-and-key' 文件"
+        echo "2. 访问 https://developer.apple.com/account/resources/certificates/list"
+        echo "3. 点击 '+' 创建证书"
+        echo "4. 选择 'iOS App Development'，上传 CSR 文件"
+        echo "5. 下载证书，重命名为 ios_development.cer"
+        echo "6. 再次点击 '+'，选择 'Apple Distribution'，上传相同 CSR"
+        echo "7. 下载证书，重命名为 ios_distribution.cer"
+        echo "8. 将两个 .cer 文件上传到此 workflow 的 artifacts"
+        echo ""
+        echo "=========================================="
+
+  generate-p12:
+    name: Generate P12 from CER
+    runs-on: macos-14
+    needs: generate-csr
+    if: false  # 此 job 需要手动触发，在获取 .cer 文件后
+    
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+    
+    - name: Download CSR and Key
+      uses: actions/download-artifact@v4
+      with:
+        name: csr-and-key
+        path: certificates
+    
+    - name: Download CER Files
+      uses: actions/download-artifact@v4
+      with:
+        name: apple-certificates
+        path: certificates
+    
+    - name: Generate P12
+      run: |
+        # 将 CER 转换为 PEM
+        openssl x509 -in certificates/ios_development.cer -inform DER -out certificates/ios_development.pem
+        openssl x509 -in certificates/ios_distribution.cer -inform DER -out certificates/ios_distribution.pem
+        
+        # 合并证书和私钥为 P12
+        openssl pkcs12 -export \
+          -in certificates/ios_development.pem \
+          -inkey certificates/private.key \
+          -out certificates/ios_development.p12 \
+          -name "iOS Development" \
+          -passout pass:${{ secrets.CERT_PASSWORD || 'focusguard123' }}
+        
+        openssl pkcs12 -export \
+          -in certificates/ios_distribution.pem \
+          -inkey certificates/private.key \
+          -out certificates/ios_distribution.p12 \
+          -name "iOS Distribution" \
+          -passout pass:${{ secrets.CERT_PASSWORD || 'focusguard123' }}
+        
+        # 合并为一个 P12（用于 GitHub Actions）
+        openssl pkcs12 -export \
+          -in certificates/ios_development.pem \
+          -in certificates/ios_distribution.pem \
+          -inkey certificates/private.key \
+          -out certificates/Certificates.p12 \
+          -name "FocusGuard Certificates" \
+          -passout pass:${{ secrets.CERT_PASSWORD || 'focusguard123' }}
+    
+    - name: Upload P12
+      uses: actions/upload-artifact@v4
+      with:
+        name: p12-certificates
+        path: certificates/*.p12
+        retention-days: 7
+    
+    - name: Display Base64
+      run: |
+        echo "=========================================="
+        echo "P12 文件已生成！"
+        echo "=========================================="
+        echo ""
+        echo "Certificates.p12 的 Base64 编码（用于 GitHub Secrets）："
+        echo ""
+        base64 certificates/Certificates.p12
+        echo ""
+        echo "=========================================="
+        echo "密码（用于 GitHub Secrets CERTIFICATES_PASSWORD）："
+        echo "${{ secrets.CERT_PASSWORD || 'focusguard123' }}"
+        echo "=========================================="
