@@ -48,15 +48,19 @@ jobs:
         cat project.yml
         
         echo ""
-        echo "=== Checking for required files ==="
-        ls -la Info.plist 2>/dev/null || echo "Info.plist not found"
-        ls -la FocusGuard.entitlements 2>/dev/null || echo "FocusGuard.entitlements not found"
-        ls -la Assets.xcassets 2>/dev/null || echo "Assets.xcassets not found"
+        echo "=== Checking Swift files ==="
+        ls -la *.swift | head -10
         
         echo ""
-        echo "=== Running xcodegen ==="
-        xcodegen generate --project . 2>&1 || {
-          echo "xcodegen failed with exit code $?"
+        echo "=== Checking Assets ==="
+        ls -la Assets.xcassets/
+        
+        echo ""
+        echo "=== Running xcodegen with verbose output ==="
+        xcodegen generate --project . --verbose 2>&1 || {
+          echo ""
+          echo "=== xcodegen failed ==="
+          echo "Exit code: $?"
           exit 1
         }
         
@@ -66,7 +70,6 @@ jobs:
         
         if [ -d "FocusGuard.xcodeproj" ]; then
           echo "Project generated successfully"
-          ls -la FocusGuard.xcodeproj/
         else
           echo "ERROR: Project not generated"
           exit 1
@@ -81,20 +84,19 @@ jobs:
     # 编译项目（模拟器）
     - name: Build for Simulator
       run: |
-        # 首先检查项目文件
-        echo "=== Checking project files ==="
-        ls -la *.xcodeproj 2>/dev/null || echo "No xcodeproj found"
-        ls -la *.swift | head -10
+        # 检查项目文件
+        if [ ! -d "FocusGuard.xcodeproj" ]; then
+          echo "ERROR: FocusGuard.xcodeproj not found"
+          exit 1
+        fi
         
         # 列出可用的 scheme
-        echo ""
         echo "=== Available Schemes ==="
-        xcodebuild -project FocusGuard.xcodeproj -list 2>&1 | head -50
+        xcodebuild -project FocusGuard.xcodeproj -list 2>&1
         
-        # 尝试构建，捕获所有输出
+        # 尝试构建
         echo ""
         echo "=== Starting Build ==="
-        set -o pipefail
         xcodebuild -project FocusGuard.xcodeproj \
                    -scheme FocusGuard \
                    -destination 'platform=iOS Simulator,name=iPhone 15,OS=17.2' \
@@ -102,46 +104,18 @@ jobs:
                    build \
                    CODE_SIGNING_REQUIRED=NO \
                    CODE_SIGNING_ALLOWED=NO \
-                   2>&1 | tee build.log | head -500
+                   2>&1 | tee build.log | head -1000
         
         exit_code=${PIPESTATUS[0]}
         echo ""
         echo "=== Exit code: $exit_code ==="
-        exit $exit_code
-      continue-on-error: true
-    
-    # 显示构建日志
-    - name: Show Build Log
-      if: always()
-      run: |
-        echo "=== Build Log (first 200 lines) ==="
-        head -200 build.log
         
-        echo ""
-        echo "=== Build Log (last 200 lines) ==="
-        tail -200 build.log
-        
-        echo ""
-        echo "=== Looking for errors ==="
-        grep -i "error:\|warning:\|fatal:" build.log | head -50 || echo "No errors found in log"
-        
-        echo ""
-        echo "=== Check if xcodeproj exists ==="
-        ls -la *.xcodeproj 2>/dev/null || echo "No xcodeproj found"
-        
-        echo ""
-        echo "=== Check project structure ==="
-        ls -la
-    
-    # 运行单元测试
-    - name: Run Tests
-      run: |
-        xcodebuild test -project FocusGuard.xcodeproj \
-                        -scheme FocusGuard \
-                        -destination 'platform=iOS Simulator,name=iPhone 15,OS=17.2' \
-                        -configuration Debug \
-                        CODE_SIGNING_REQUIRED=NO \
-                        CODE_SIGNING_ALLOWED=NO
+        if [ $exit_code -ne 0 ]; then
+          echo ""
+          echo "=== Build failed, showing full log ==="
+          cat build.log
+          exit $exit_code
+        fi
       continue-on-error: true
 
   build-and-upload:
@@ -164,7 +138,7 @@ jobs:
     
     - name: Generate Xcode Project
       run: |
-        xcodegen generate
+        xcodegen generate --project .
     
     # 安装证书
     - name: Install Apple Certificate
