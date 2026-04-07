@@ -6,5 +6,36 @@ jobs:
     steps:
     - uses: actions/checkout@v4
     - run: brew install xcodegen
-    - run: xcodegen generate
-    - run: xcodebuild -project FocusGuard.xcodeproj -scheme FocusGuard -destination 'platform=iOS' -archivePath app.xcarchive archive
+    - name: Generate Project
+      run: |
+        rm -f project.yml
+        echo 'name: FocusGuard' > project.yml
+        echo 'targets:' >> project.yml
+        echo '  FocusGuard:' >> project.yml
+        echo '    type: application' >> project.yml
+        echo '    platform: iOS' >> project.yml
+        echo '    deploymentTarget: "16.0"' >> project.yml
+        echo '    sources:' >> project.yml
+        echo '      - path: .' >> project.yml
+        echo '    settings:' >> project.yml
+        echo '      base:' >> project.yml
+        echo '        PRODUCT_BUNDLE_IDENTIFIER: com.baobao.focusguard' >> project.yml
+        echo '        SWIFT_VERSION: "5.9"' >> project.yml
+        echo '        TARGETED_DEVICE_FAMILY: "1"' >> project.yml
+        echo '        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon' >> project.yml
+        cat project.yml
+        xcodegen generate --project .
+    - name: Check Project
+      run: |
+        ls -la *.xcodeproj
+        echo "=== Project Info ==="
+        xcodebuild -project FocusGuard.xcodeproj -list
+    - name: Build
+      run: |
+        xcodebuild -project FocusGuard.xcodeproj \
+                   -scheme FocusGuard \
+                   -destination 'generic/platform=iOS' \
+                   -archivePath app.xcarchive \
+                   archive \
+                   CODE_SIGNING_REQUIRED=NO \
+                   CODE_SIGNING_ALLOWED=NO
