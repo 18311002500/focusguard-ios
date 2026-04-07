@@ -29,123 +29,22 @@ jobs:
     - name: Generate Project
       run: |
         rm -f Package.swift project.yml
-        cat > project.yml << 'EOF'
-name: FocusGuard
-targets:
-  FocusGuard:
-    type: application
-    platform: iOS
-    deploymentTarget: "16.0"
-    sources:
-      - path: .
-        excludes:
-          - .git
-          - .github
-          - certificates
-          - "*.md"
-          - "*.sh"
-          - "*.py"
-          - "*.yml"
-          - "project.yml"
-    settings:
-      base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.baobao.focusguard
-        SWIFT_VERSION: "5.9"
-        TARGETED_DEVICE_FAMILY: "1"
-        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
-        SUPPORTS_MACCATALYST: NO
-EOF
+        echo 'name: FocusGuard' > project.yml
+        echo 'targets:' >> project.yml
+        echo '  FocusGuard:' >> project.yml
+        echo '    type: application' >> project.yml
+        echo '    platform: iOS' >> project.yml
+        echo '    deploymentTarget: "16.0"' >> project.yml
+        echo '    sources:' >> project.yml
+        echo '      - path: .' >> project.yml
+        echo '    settings:' >> project.yml
+        echo '      base:' >> project.yml
+        echo '        PRODUCT_BUNDLE_IDENTIFIER: com.baobao.focusguard' >> project.yml
+        echo '        SWIFT_VERSION: "5.9"' >> project.yml
+        cat project.yml
         xcodegen generate --project .
     
     - name: Build
       run: |
-        xcodebuild -project FocusGuard.xcodeproj \
-                   -scheme FocusGuard \
-                   -destination 'platform=iOS Simulator,name=iPhone 15,OS=17.2' \
-                   -configuration Debug \
-                   build \
-                   CODE_SIGNING_REQUIRED=NO \
-                   CODE_SIGNING_ALLOWED=NO
+        xcodebuild -project FocusGuard.xcodeproj -scheme FocusGuard -destination 'platform=iOS Simulator,name=iPhone 15,OS=17.2' -configuration Debug build CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO
       continue-on-error: true
-
-  upload:
-    runs-on: macos-14
-    if: github.event.inputs.upload_to_testflight == 'true'
-    steps:
-    - uses: actions/checkout@v4
-    - uses: maxim-lobanov/setup-xcode@v1
-      with:
-        xcode-version: '15.2'
-    - run: brew install xcodegen
-    - run: |
-        rm -f Package.swift project.yml
-        cat > project.yml << 'EOF'
-name: FocusGuard
-targets:
-  FocusGuard:
-    type: application
-    platform: iOS
-    deploymentTarget: "16.0"
-    sources:
-      - path: .
-        excludes:
-          - .git
-          - .github
-          - certificates
-          - "*.md"
-          - "*.sh"
-          - "*.py"
-          - "*.yml"
-          - "project.yml"
-    settings:
-      base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.baobao.focusguard
-        SWIFT_VERSION: "5.9"
-        TARGETED_DEVICE_FAMILY: "1"
-        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
-        SUPPORTS_MACCATALYST: NO
-EOF
-        xcodegen generate --project .
-    
-    - name: Install Certificate
-      uses: apple-actions/import-codesign-certs@v2
-      with:
-        p12-file-base64: ${{ secrets.CERTIFICATES_P12 }}
-        p12-password: ${{ secrets.CERTIFICATES_PASSWORD }}
-    
-    - name: Install Profile
-      run: |
-        mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
-        echo "${{ secrets.PROVISIONING_PROFILE }}" | base64 --decode > ~/Library/MobileDevice/Provisioning\ Profiles/profile.mobileprovision
-    
-    - name: Archive
-      run: |
-        xcodebuild -project FocusGuard.xcodeproj \
-                   -scheme FocusGuard \
-                   -archivePath $RUNNER_TEMP/app.xcarchive \
-                   -destination 'generic/platform=iOS' \
-                   archive \
-                   CODE_SIGN_IDENTITY="iPhone Distribution"
-    
-    - name: Export
-      run: |
-        echo '{
-          "method": "app-store",
-          "teamID": "54LA8Y9L27",
-          "signingStyle": "manual",
-          "provisioningProfiles": {
-            "com.baobao.focusguard": "FocusGuard App Store"
-          }
-        }' > options.json
-        xcodebuild -exportArchive \
-                   -archivePath $RUNNER_TEMP/app.xcarchive \
-                   -exportPath $RUNNER_TEMP/build \
-                   -exportOptionsPlist options.json
-    
-    - name: Upload
-      uses: apple-actions/upload-testflight-build@v1
-      with:
-        app-path: $RUNNER_TEMP/build/FocusGuard.ipa
-        issuer-id: ${{ secrets.APPSTORE_ISSUER_ID }}
-        api-key-id: ${{ secrets.APPSTORE_API_KEY_ID }}
-        api-private-key: ${{ secrets.APPSTORE_API_PRIVATE_KEY }}
