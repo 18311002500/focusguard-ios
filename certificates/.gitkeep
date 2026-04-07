@@ -1,0 +1,20 @@
+# Certificates Directory
+
+此目录用于存放 iOS 证书文件。
+
+## 需要上传的文件
+
+1. `ios_development.cer` - iOS 开发证书（从 Apple Developer 下载）
+2. `ios_distribution.cer` - iOS 分发证书（从 Apple Developer 下载）
+3. `private.key` - 私钥文件（从 GitHub Actions artifacts 下载）
+
+## 使用说明
+
+上传这三个文件后，运行 GitHub Actions workflow:
+- **Complete Certificate Generation** (Part 2)
+
+workflow 将自动生成 P12 证书文件。
+
+---
+
+⚠️ **安全提醒**: 此目录中的文件包含敏感信息，不要提交到公共仓库。
