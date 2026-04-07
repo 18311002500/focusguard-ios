@@ -1,14 +1,10 @@
-name: Build FocusGuard iOS App
+name: Build FocusGuard
 
 on:
-  push:
-    branches: [ main, develop ]
-  pull_request:
-    branches: [ main ]
   workflow_dispatch:
     inputs:
       upload_to_testflight:
-        description: '上传到 TestFlight'
+        description: 'Upload to TestFlight'
         required: false
         default: 'false'
         type: choice
@@ -16,55 +12,24 @@ on:
           - 'true'
           - 'false'
 
-env:
-  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
-
 jobs:
   build:
-    name: Build iOS App
     runs-on: macos-14
-    
     steps:
-    - name: Checkout
-      uses: actions/checkout@v4
-      
+    - uses: actions/checkout@v4
+    
     - name: Setup Xcode
       uses: maxim-lobanov/setup-xcode@v1
       with:
         xcode-version: '15.2'
     
-    - name: Debug Environment
-      run: |
-        echo "=== Current directory ==="
-        pwd
-        ls -la
-        
-        echo ""
-        echo "=== Check for problematic files ==="
-        find . -name "*.yml" -o -name "*.yaml" | grep -v ".github"
-        
-        echo ""
-        echo "=== Check Swift files ==="
-        ls -la *.swift 2>/dev/null | head -5 || echo "No swift files in root"
-        
-        echo ""
-        echo "=== Check for Package.swift ==="
-        ls -la Package.swift 2>/dev/null || echo "No Package.swift"
-    
     - name: Install xcodegen
-      run: |
-        brew install xcodegen
-        which xcodegen
-        xcodegen version
+      run: brew install xcodegen
     
-    - name: Remove problematic files and generate project
+    - name: Generate Project
       run: |
-        # Remove any potentially problematic files
-        rm -f Package.swift
-        rm -f project.yml
-        
-        # Create a minimal project.yml
-        cat > project.yml << 'YAMLEOF'
+        rm -f Package.swift project.yml
+        cat > project.yml << 'EOF'
 name: FocusGuard
 targets:
   FocusGuard:
@@ -89,26 +54,10 @@ targets:
         TARGETED_DEVICE_FAMILY: "1"
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         SUPPORTS_MACCATALYST: NO
-YAMLEOF
-        
-        echo "=== Generated project.yml ==="
-        cat project.yml
-        
-        echo ""
-        echo "=== Running xcodegen ==="
-        xcodegen generate --project . 2>&1
-        
-        echo ""
-        echo "=== Check result ==="
-        if [ -d "FocusGuard.xcodeproj" ]; then
-          echo "SUCCESS: Project generated"
-          ls -la FocusGuard.xcodeproj/
-        else
-          echo "FAILED: No project generated"
-          exit 1
-        fi
+EOF
+        xcodegen generate --project .
     
-    - name: Build Project
+    - name: Build
       run: |
         xcodebuild -project FocusGuard.xcodeproj \
                    -scheme FocusGuard \
@@ -116,28 +65,21 @@ YAMLEOF
                    -configuration Debug \
                    build \
                    CODE_SIGNING_REQUIRED=NO \
-                   CODE_SIGNING_ALLOWED=NO 2>&1 | head -500
+                   CODE_SIGNING_ALLOWED=NO
       continue-on-error: true
 
-  build-and-upload:
-    name: Build and Upload to App Store
+  upload:
     runs-on: macos-14
     if: github.event.inputs.upload_to_testflight == 'true'
-    
     steps:
-    - name: Checkout
-      uses: actions/checkout@v4
-      
-    - name: Setup Xcode
-      uses: maxim-lobanov/setup-xcode@v1
+    - uses: actions/checkout@v4
+    - uses: maxim-lobanov/setup-xcode@v1
       with:
         xcode-version: '15.2'
-    
-    - name: Generate Xcode Project
-      run: |
+    - run: brew install xcodegen
+    - run: |
         rm -f Package.swift project.yml
-        brew install xcodegen
-        cat > project.yml << 'YAMLEOF'
+        cat > project.yml << 'EOF'
 name: FocusGuard
 targets:
   FocusGuard:
@@ -162,73 +104,48 @@ targets:
         TARGETED_DEVICE_FAMILY: "1"
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         SUPPORTS_MACCATALYST: NO
-YAMLEOF
+EOF
         xcodegen generate --project .
     
-    # 安装证书
-    - name: Install Apple Certificate
+    - name: Install Certificate
       uses: apple-actions/import-codesign-certs@v2
       with:
         p12-file-base64: ${{ secrets.CERTIFICATES_P12 }}
         p12-password: ${{ secrets.CERTIFICATES_PASSWORD }}
     
-    # 安装描述文件
-    - name: Install Provisioning Profile
+    - name: Install Profile
       run: |
         mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
-        echo "${{ secrets.PROVISIONING_PROFILE }}" | base64 --decode > ~/Library/MobileDevice/Provisioning\ Profiles/FocusGuard_App_Store.mobileprovision
+        echo "${{ secrets.PROVISIONING_PROFILE }}" | base64 --decode > ~/Library/MobileDevice/Provisioning\ Profiles/profile.mobileprovision
     
-    # 构建并归档
-    - name: Build Archive
+    - name: Archive
       run: |
         xcodebuild -project FocusGuard.xcodeproj \
                    -scheme FocusGuard \
-                   -archivePath $RUNNER_TEMP/FocusGuard.xcarchive \
+                   -archivePath $RUNNER_TEMP/app.xcarchive \
                    -destination 'generic/platform=iOS' \
                    archive \
-                   CODE_SIGN_IDENTITY="iPhone Distribution" \
-                   PROVISIONING_PROFILE_SPECIFIER="FocusGuard App Store"
+                   CODE_SIGN_IDENTITY="iPhone Distribution"
     
-    # 导出 IPA
-    - name: Export IPA
+    - name: Export
       run: |
-        cat > ExportOptions.plist << EOF
-        <?xml version="1.0" encoding="UTF-8"?>
-        <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-        <plist version="1.0">
-        <dict>
-            <key>method</key>
-            <string>app-store</string>
-            <key>teamID</key>
-            <string>54LA8Y9L27</string>
-            <key>signingStyle</key>
-            <string>manual</string>
-            <key>provisioningProfiles</key>
-            <dict>
-                <key>com.baobao.focusguard</key>
-                <string>FocusGuard App Store</string>
-            </dict>
-        </dict>
-        </plist>
-        EOF
-        
+        echo '{
+          "method": "app-store",
+          "teamID": "54LA8Y9L27",
+          "signingStyle": "manual",
+          "provisioningProfiles": {
+            "com.baobao.focusguard": "FocusGuard App Store"
+          }
+        }' > options.json
         xcodebuild -exportArchive \
-                   -archivePath $RUNNER_TEMP/FocusGuard.xcarchive \
+                   -archivePath $RUNNER_TEMP/app.xcarchive \
                    -exportPath $RUNNER_TEMP/build \
-                   -exportOptionsPlist ExportOptions.plist
+                   -exportOptionsPlist options.json
     
-    # 上传到 TestFlight
-    - name: Upload to TestFlight
+    - name: Upload
       uses: apple-actions/upload-testflight-build@v1
       with:
         app-path: $RUNNER_TEMP/build/FocusGuard.ipa
         issuer-id: ${{ secrets.APPSTORE_ISSUER_ID }}
         api-key-id: ${{ secrets.APPSTORE_API_KEY_ID }}
         api-private-key: ${{ secrets.APPSTORE_API_PRIVATE_KEY }}
-    
-    # 上传 IPA 作为产物
-    - name: Upload IPA
-      uses: actions/upload-artifact@v4
-      with:
-        name: FocusGuard-IPA
-        path: $RUNNER_TEMP/build/FocusGuard.ipa
