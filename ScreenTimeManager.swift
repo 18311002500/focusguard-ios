@@ -7,9 +7,13 @@
 
 import Foundation
 import SwiftData
+
+// ScreenTime API 只在真机上可用
+#if !targetEnvironment(simulator)
 import FamilyControls
 import DeviceActivity
 import ManagedSettings
+#endif
 
 /// ScreenTimeManager - 屏幕时间管理器
 /// 负责读取设备屏幕使用数据并同步到本地数据库
@@ -22,7 +26,9 @@ class ScreenTimeManager: ObservableObject {
     @Published var isLoading = false
     @Published var errorMessage: String?
     
+    #if !targetEnvironment(simulator)
     private let center = DeviceActivityCenter()
+    #endif
     private var context: ModelContext?
     
     private init() {}
@@ -37,6 +43,13 @@ class ScreenTimeManager: ObservableObject {
     /// 申请屏幕时间权限
     /// 这是使用 ScreenTime API 的第一步
     func requestAuthorization() async {
+        #if targetEnvironment(simulator)
+        // 模拟器上自动授权
+        await MainActor.run {
+            self.isAuthorized = true
+            self.errorMessage = nil
+        }
+        #else
         do {
             try await AuthorizationCenter.shared.requestAuthorization(for: .individual)
             await MainActor.run {
@@ -49,12 +62,17 @@ class ScreenTimeManager: ObservableObject {
                 self.errorMessage = "权限申请失败: \(error.localizedDescription)"
             }
         }
+        #endif
     }
     
     /// 检查当前权限状态
     func checkAuthorizationStatus() {
+        #if targetEnvironment(simulator)
+        isAuthorized = true
+        #else
         let status = AuthorizationCenter.shared.authorizationStatus
         isAuthorized = (status == .approved)
+        #endif
     }
     
     // MARK: - 数据获取
@@ -75,7 +93,7 @@ class ScreenTimeManager: ObservableObject {
         // 这里提供架构代码，实际数据获取需要在真机上测试
         
         // 模拟数据（用于开发和预览）
-        #if DEBUG
+        #if DEBUG || targetEnvironment(simulator)
         await loadMockData()
         #endif
     }
@@ -118,7 +136,7 @@ class ScreenTimeManager: ObservableObject {
     
     // MARK: - 模拟数据（仅用于开发测试）
     
-    #if DEBUG
+    #if DEBUG || targetEnvironment(simulator)
     private func loadMockData() async {
         guard let context = context else { return }
         
@@ -165,7 +183,9 @@ struct AppActivity {
 class AppLimitManager: ObservableObject {
     static let shared = AppLimitManager()
     
+    #if !targetEnvironment(simulator)
     private let store = ManagedSettingsStore()
+    #endif
     
     private init() {}
     

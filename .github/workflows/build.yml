@@ -81,17 +81,24 @@ jobs:
     - name: Show Build Log
       if: always()
       run: |
-        echo "=== Build Log ==="
-        cat build.log | tail -100
+        echo "=== Build Log (first 200 lines) ==="
+        head -200 build.log
+        
+        echo ""
+        echo "=== Build Log (last 200 lines) ==="
+        tail -200 build.log
         
         echo ""
         echo "=== Looking for errors ==="
-        grep -i "error:" build.log || echo "No errors found in log"
+        grep -i "error:\|warning:\|fatal:" build.log | head -50 || echo "No errors found in log"
         
         echo ""
-        echo "=== Xcode Project Structure ==="
-        ls -la FocusGuard.xcodeproj/
-        find FocusGuard.xcodeproj -name "*.pbxproj" -exec cat {} \; | head -50
+        echo "=== Check if xcodeproj exists ==="
+        ls -la *.xcodeproj 2>/dev/null || echo "No xcodeproj found"
+        
+        echo ""
+        echo "=== Check project structure ==="
+        ls -la
     
     # 运行单元测试
     - name: Run Tests
