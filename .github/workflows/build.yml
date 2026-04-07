@@ -57,6 +57,11 @@ jobs:
     # 编译项目（模拟器）
     - name: Build for Simulator
       run: |
+        # 列出可用的 scheme
+        echo "=== Available Schemes ==="
+        xcodebuild -project FocusGuard.xcodeproj -list
+        
+        # 尝试构建
         xcodebuild -project FocusGuard.xcodeproj \
                    -scheme FocusGuard \
                    -destination 'platform=iOS Simulator,name=iPhone 15,OS=17.2' \
@@ -64,7 +69,12 @@ jobs:
                    build \
                    CODE_SIGNING_REQUIRED=NO \
                    CODE_SIGNING_ALLOWED=NO \
-                   | tee build.log
+                   2>&1 | tee build.log
+        
+        # 检查退出码
+        exit_code=${PIPESTATUS[0]}
+        echo "Exit code: $exit_code"
+        exit $exit_code
       continue-on-error: true
     
     # 显示构建日志
