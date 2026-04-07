@@ -46,12 +46,21 @@ jobs:
     
     - name: Build
       run: |
-        xcodebuild -project FocusGuard.xcodeproj -scheme FocusGuard -destination 'platform=iOS Simulator,name=iPhone 15,OS=17.2' -configuration Debug build CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO 2>&1 | tee build.log | tail -200
+        xcodebuild -project FocusGuard.xcodeproj -scheme FocusGuard -destination 'platform=iOS Simulator,name=iPhone 15,OS=17.2' -configuration Debug build CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO 2>&1 | tee build.log
         exit_code=${PIPESTATUS[0]}
         echo "Exit code: $exit_code"
         if [ $exit_code -ne 0 ]; then
-          echo "=== Build failed, showing errors ==="
-          grep -i "error:" build.log | head -50
+          echo ""
+          echo "=== BUILD FAILED ==="
+          echo ""
+          echo "=== First 100 lines of log ==="
+          head -100 build.log
+          echo ""
+          echo "=== Last 100 lines of log ==="
+          tail -100 build.log
+          echo ""
+          echo "=== All errors ==="
+          grep -i "error:" build.log
           exit $exit_code
         fi
       continue-on-error: true
