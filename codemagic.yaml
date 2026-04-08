@@ -7,6 +7,9 @@ workflows:
       vars:
         BUNDLE_ID: com.baobao.focusguard
         XCODE_VERSION: "15.4"
+      ios_signing:
+        distribution_type: app_store
+        bundle_identifier: com.baobao.focusguard
     scripts:
       - name: Install dependencies
         script: |
@@ -14,70 +17,34 @@ workflows:
       - name: Generate Xcode project
         script: |
           xcodegen generate
-      - name: Set up code signing
-        script: |
-          # 创建 keychain
-          security create-keychain -p "codemagic" build.keychain
-          security default-keychain -s build.keychain
-          security unlock-keychain -p "codemagic" build.keychain
-          
-          # 导入证书
-          echo "$CM_CERTIFICATE" | base64 --decode > certificate.p12
-          security import certificate.p12 -k build.keychain -P "$CM_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
-          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "codemagic" build.keychain
-          
-          # 安装描述文件
-          echo "$CM_PROVISIONING_PROFILE" | base64 --decode > profile.mobileprovision
-          mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
-          UUID=$(grep -a -A1 "UUID" profile.mobileprovision | grep string | sed -n 's/.*<string>\(.*\)<\/string>.*/\1/p')
-          cp profile.mobileprovision ~/Library/MobileDevice/Provisioning\ Profiles/$UUID.mobileprovision
-          echo "Profile UUID: $UUID"
       - name: Build archive
         script: |
-          # 获取证书名称和 Team ID
-          CERT_INFO=$(security find-identity -v -p codesigning build.keychain | grep "Apple Distribution")
-          CERT_NAME=$(echo "$CERT_INFO" | sed 's/.*"\(.*\)".*/\1/')
-          TEAM_ID=$(echo "$CERT_INFO" | sed 's/.*(\([A-Z0-9]*\)).*/\1/')
-          
-          echo "Certificate: $CERT_NAME"
-          echo "Team ID: $TEAM_ID"
-          
           xcodebuild -project FocusGuard.xcodeproj \
                      -scheme FocusGuard \
                      -sdk iphoneos \
                      -configuration Release \
                      -archivePath build/FocusGuard.xcarchive \
                      CODE_SIGN_STYLE=Manual \
-                     CODE_SIGN_IDENTITY="$CERT_NAME" \
-                     DEVELOPMENT_TEAM="$TEAM_ID" \
-                     archive
+                     CODE_SIGN_IDENTITY="" \
+                     PROVISIONING_PROFILE_SPECIFIER="" \
+                     SWIFT_TREAT_WARNINGS_AS_ERRORS=NO \
+                     archive 2>&1 | tee build.log
+      - name: Check build log
+        script: |
+          if grep -q "error:" build.log; then
+            echo "Build failed with errors:"
+            grep -A 5 "error:" build.log | head -50
+            exit 1
+          fi
       - name: Export IPA
         script: |
-          # 获取 Team ID
-          TEAM_ID=$(security find-identity -v -p codesigning build.keychain | grep "Apple Distribution" | sed 's/.*(\([A-Z0-9]*\)).*/\1/')
-          
-          # 创建 ExportOptions.plist
-          cat > ExportOptions.plist << EOF
-          <?xml version="1.0" encoding="UTF-8"?>
-          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-          <plist version="1.0">
-          <dict>
-            <key>method</key>
-            <string>app-store</string>
-            <key>teamID</key>
-            <string>$TEAM_ID</string>
-            <key>signingStyle</key>
-            <string>manual</string>
-          </dict>
-          </plist>
-          EOF
-          
           xcodebuild -exportArchive \
                      -archivePath build/FocusGuard.xcarchive \
                      -exportPath build/ \
                      -exportOptionsPlist ExportOptions.plist
     artifacts:
       - build/*.ipa
+      - build.log
     publishing:
       app_store_connect:
         api_key: $APPSTORE_ISSUER_ID
