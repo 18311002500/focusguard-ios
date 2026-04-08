@@ -181,7 +181,7 @@ class StoreManager: ObservableObject {
     }
     
     // MARK: - 处理已验证的交易
-    private func handleVerifiedTransaction(_ transaction: Transaction) async {
+    private func handleVerifiedTransaction(_ transaction: StoreKit.Transaction) async {
         switch transaction.productID {
         case ProductID.premiumUnlock.rawValue:
             isPremiumUnlocked = true
@@ -194,7 +194,7 @@ class StoreManager: ObservableObject {
     }
     
     // MARK: - 处理更新
-    private func handleUpdate(_ update: VerificationResult<Transaction>) async {
+    private func handleUpdate(_ update: VerificationResult<StoreKit.Transaction>) async {
         if case .verified(let transaction) = update {
             await handleVerifiedTransaction(transaction)
             await transaction.finish()
@@ -228,7 +228,7 @@ enum StoreError: LocalizedError {
 
 // MARK: - SwiftUI Environment Key
 private struct StoreManagerKey: EnvironmentKey {
-    static let defaultValue = StoreManager()
+    @MainActor static let defaultValue = StoreManager()
 }
 
 extension EnvironmentValues {
@@ -237,4 +237,5 @@ extension EnvironmentValues {
         set { self[StoreManagerKey.self] = newValue }
     }
 }
+
 
