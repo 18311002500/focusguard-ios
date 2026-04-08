@@ -82,10 +82,7 @@ class StoreManager: ObservableObject {
     private var updateListenerTask: Task<Void, Error>?
     
     init() {
-        // 检查之前的购买状态
         isPremiumUnlocked = UserDefaults.standard.bool(forKey: "isPremiumUnlocked")
-        
-        // 监听购买更新
         updateListenerTask = listenForTransactions()
     }
     
@@ -93,16 +90,14 @@ class StoreManager: ObservableObject {
         updateListenerTask?.cancel()
     }
     
-    // MARK: - 监听交易更新
     private func listenForTransactions() -> Task<Void, Error> {
         return Task.detached {
-            for await result in Transaction.updates {
+            for await result in StoreKit.Transaction.updates {
                 await self.handleTransactionResult(result)
             }
         }
     }
     
-    // MARK: - 处理交易结果
     private func handleTransactionResult(_ result: VerificationResult<StoreKit.Transaction>) async {
         switch result {
         case .verified(let transaction):
@@ -113,7 +108,6 @@ class StoreManager: ObservableObject {
         }
     }
     
-    // MARK: - 请求产品
     func requestProducts() async {
         purchaseState = .loading
         
@@ -127,7 +121,6 @@ class StoreManager: ObservableObject {
         }
     }
     
-    // MARK: - 购买产品
     func purchase(_ product: Product) async {
         purchaseState = .purchasing
         
@@ -155,7 +148,6 @@ class StoreManager: ObservableObject {
         }
     }
     
-    // MARK: - 恢复购买
     func restorePurchases() async {
         purchaseState = .loading
         
@@ -169,16 +161,14 @@ class StoreManager: ObservableObject {
         }
     }
     
-    // MARK: - 检查之前的购买
     func checkPreviousPurchases() async {
-        for await result in Transaction.currentEntitlements {
+        for await result in StoreKit.Transaction.currentEntitlements {
             if case .verified(let transaction) = result {
                 await handleVerifiedTransaction(transaction)
             }
         }
     }
     
-    // MARK: - 处理购买验证
     private func handlePurchaseVerification(_ verification: VerificationResult<StoreKit.Transaction>) async {
         switch verification {
         case .verified(let transaction):
@@ -192,7 +182,6 @@ class StoreManager: ObservableObject {
         }
     }
     
-    // MARK: - 处理已验证的交易
     private func handleVerifiedTransaction(_ transaction: StoreKit.Transaction) async {
         switch transaction.productID {
         case ProductID.premiumUnlock.rawValue:
@@ -204,24 +193,7 @@ class StoreManager: ObservableObject {
         }
     }
     
-    // MARK: - 检查特定功能是否解锁
     func isFeatureUnlocked(_ feature: PremiumFeature) -> Bool {
         return isPremiumUnlocked
-    }
-}
-
-// MARK: - SwiftUI Environment
-import SwiftUI
-
-private struct StoreManagerKey: EnvironmentKey {
-    static var defaultValue: StoreManager {
-        return StoreManager()
-    }
-}
-
-extension EnvironmentValues {
-    var storeManager: StoreManager {
-        get { self[StoreManagerKey.self] }
-        set { self[StoreManagerKey.self] = newValue }
     }
 }
