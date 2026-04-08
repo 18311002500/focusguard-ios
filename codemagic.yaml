@@ -16,24 +16,50 @@ workflows:
           xcodegen generate
       - name: Setup signing
         script: |
+          echo "Setting up signing..."
+          
           # 创建证书目录
           mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
           
+          # 检查环境变量
+          echo "CM_CERTIFICATE length: ${#CM_CERTIFICATE}"
+          echo "CM_PROVISIONING_PROFILE length: ${#CM_PROVISIONING_PROFILE}"
+          
           # 解码证书
           if [ -n "$CM_CERTIFICATE" ]; then
+            echo "Decoding certificate..."
             echo "$CM_CERTIFICATE" | base64 -d > /tmp/Certificates.p12
+            echo "Certificate file size: $(stat -f%z /tmp/Certificates.p12 2>/dev/null || stat -c%s /tmp/Certificates.p12 2>/dev/null || echo 'unknown')"
+            
+            # 导入到钥匙串
             security import /tmp/Certificates.p12 -P "$CM_CERTIFICATE_PASSWORD" -A -t cert -f pkcs12
+            echo "Certificate imported"
+          else
+            echo "WARNING: CM_CERTIFICATE not set"
           fi
           
           # 解码描述文件
           if [ -n "$CM_PROVISIONING_PROFILE" ]; then
+            echo "Decoding provisioning profile..."
             echo "$CM_PROVISIONING_PROFILE" | base64 -d > ~/Library/MobileDevice/Provisioning\ Profiles/FocusGuard.mobileprovision
+            echo "Provisioning profile saved"
+            ls -la ~/Library/MobileDevice/Provisioning\ Profiles/
+          else
+            echo "WARNING: CM_PROVISIONING_PROFILE not set"
           fi
+          
+          # 列出可用证书
+          echo "Available certificates:"
+          security find-identity -v -p codesigning
       - name: Build archive
         script: |
           # 获取 Team ID
           TEAM_ID=$(security find-identity -v -p codesigning | grep "Apple Distribution" | head -1 | sed 's/.*(\([A-Z0-9]*\)).*/\1/')
           echo "Team ID: $TEAM_ID"
+          
+          # 获取证书名称
+          CERT_NAME=$(security find-identity -v -p codesigning | grep "Apple Distribution" | head -1 | sed 's/.*"\([^"]*\)".*/\1/')
+          echo "Certificate name: $CERT_NAME"
           
           xcodebuild -project FocusGuard.xcodeproj \
                      -scheme FocusGuard \
@@ -41,8 +67,8 @@ workflows:
                      -configuration Release \
                      -archivePath build/FocusGuard.xcarchive \
                      CODE_SIGN_STYLE=Manual \
-                     CODE_SIGN_IDENTITY="Apple Distribution" \
-                     PROVISIONING_PROFILE_SPECIFIER="" \
+                     CODE_SIGN_IDENTITY="$CERT_NAME" \
+                     PROVISIONING_PROFILE_SPECIFIER="FocusGuard App Store" \
                      DEVELOPMENT_TEAM="$TEAM_ID" \
                      SWIFT_TREAT_WARNINGS_AS_ERRORS=NO \
                      archive 2>&1 | tee build.log
@@ -56,6 +82,8 @@ workflows:
           echo "Build succeeded!"
       - name: Create ExportOptions.plist
         script: |
+          TEAM_ID=$(security find-identity -v -p codesigning | grep "Apple Distribution" | head -1 | sed 's/.*(\([A-Z0-9]*\)).*/\1/')
+          
           cat > ExportOptions.plist << EOF
           <?xml version="1.0" encoding="UTF-8"?>
           <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -64,14 +92,23 @@ workflows:
             <key>method</key>
             <string>app-store-connect</string>
             <key>teamID</key>
-            <string>$(security find-identity -v -p codesigning | grep "Apple Distribution" | head -1 | sed 's/.*(\([A-Z0-9]*\)).*/\1/')</string>
+            <string>$TEAM_ID</string>
             <key>uploadSymbols</key>
             <true/>
             <key>uploadBitcode</key>
             <false/>
+            <key>signingStyle</key>
+            <string>manual</string>
+            <key>provisioningProfiles</key>
+            <dict>
+              <key>com.baobao.focusguard</key>
+              <string>FocusGuard App Store</string>
+            </dict>
           </dict>
           </plist>
           EOF
+          
+          cat ExportOptions.plist
       - name: Export IPA
         script: |
           xcodebuild -exportArchive \
