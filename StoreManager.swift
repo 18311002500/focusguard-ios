@@ -6,9 +6,7 @@
 //
 
 import Foundation
-import SwiftUI
 import StoreKit
-import SwiftData
 
 // MARK: - 内购产品类型
 enum PremiumFeature: String, CaseIterable {
@@ -47,7 +45,7 @@ enum PremiumFeature: String, CaseIterable {
 
 // MARK: - 产品 ID
 enum ProductID: String, CaseIterable {
-    case premiumUnlock = "com.focusguard.premium.unlock"
+    case premiumUnlock = "com.baobao.focusguard.premium"
     
     static var allProductIDs: [String] {
         return Self.allCases.map { $0.rawValue }
@@ -55,12 +53,12 @@ enum ProductID: String, CaseIterable {
 }
 
 // MARK: - 购买状态
-enum PurchaseState {
+enum PurchaseState: Equatable {
     case notStarted
     case loading
     case purchasing
     case purchased
-    case failed(Error)
+    case failed(String)
     case restored
     
     var isLoading: Bool {
@@ -81,22 +79,38 @@ class StoreManager: ObservableObject {
     @Published var isPremiumUnlocked: Bool = false
     @Published var errorMessage: String?
     
-    private var updates: Task<Void, Never>?
+    private var updateListenerTask: Task<Void, Error>?
     
     init() {
         // 检查之前的购买状态
-        checkPreviousPurchases()
+        isPremiumUnlocked = UserDefaults.standard.bool(forKey: "isPremiumUnlocked")
         
         // 监听购买更新
-        updates = Task {
-            for await update in Transaction.updates {
-                await handleUpdate(update)
+        updateListenerTask = listenForTransactions()
+    }
+    
+    deinit {
+        updateListenerTask?.cancel()
+    }
+    
+    // MARK: - 监听交易更新
+    private func listenForTransactions() -> Task<Void, Error> {
+        return Task.detached {
+            for await result in Transaction.updates {
+                await self.handleTransactionResult(result)
             }
         }
     }
     
-    deinit {
-        updates?.cancel()
+    // MARK: - 处理交易结果
+    private func handleTransactionResult(_ result: VerificationResult<StoreKit.Transaction>) async {
+        switch result {
+        case .verified(let transaction):
+            await handleVerifiedTransaction(transaction)
+            await transaction.finish()
+        case .unverified(_, let error):
+            print("Transaction unverified: \(error)")
+        }
     }
     
     // MARK: - 请求产品
@@ -108,7 +122,7 @@ class StoreManager: ObservableObject {
             products = storeProducts.sorted { $0.price < $1.price }
             purchaseState = .notStarted
         } catch {
-            purchaseState = .failed(error)
+            purchaseState = .failed(error.localizedDescription)
             errorMessage = "无法加载产品: \(error.localizedDescription)"
         }
     }
@@ -132,11 +146,11 @@ class StoreManager: ObservableObject {
                 errorMessage = "购买正在等待处理..."
                 
             @unknown default:
-                purchaseState = .failed(StoreError.unknown)
+                purchaseState = .failed("未知错误")
                 errorMessage = "未知错误"
             }
         } catch {
-            purchaseState = .failed(error)
+            purchaseState = .failed(error.localizedDescription)
             errorMessage = "购买失败: \(error.localizedDescription)"
         }
     }
@@ -150,24 +164,22 @@ class StoreManager: ObservableObject {
             await checkPreviousPurchases()
             purchaseState = .restored
         } catch {
-            purchaseState = .failed(error)
+            purchaseState = .failed(error.localizedDescription)
             errorMessage = "恢复失败: \(error.localizedDescription)"
         }
     }
     
     // MARK: - 检查之前的购买
-    func checkPreviousPurchases() {
-        Task {
-            for await entitlement in await Transaction.currentEntitlements {
-                if case .verified(let transaction) = entitlement {
-                    await handleVerifiedTransaction(transaction)
-                }
+    func checkPreviousPurchases() async {
+        for await result in Transaction.currentEntitlements {
+            if case .verified(let transaction) = result {
+                await handleVerifiedTransaction(transaction)
             }
         }
     }
     
     // MARK: - 处理购买验证
-    private func handlePurchaseVerification(_ verification: VerificationResult<Transaction>) async {
+    private func handlePurchaseVerification(_ verification: VerificationResult<StoreKit.Transaction>) async {
         switch verification {
         case .verified(let transaction):
             await handleVerifiedTransaction(transaction)
@@ -175,7 +187,7 @@ class StoreManager: ObservableObject {
             purchaseState = .purchased
             
         case .unverified(_, let error):
-            purchaseState = .failed(error)
+            purchaseState = .failed(error.localizedDescription)
             errorMessage = "验证失败: \(error.localizedDescription)"
         }
     }
@@ -185,7 +197,6 @@ class StoreManager: ObservableObject {
         switch transaction.productID {
         case ProductID.premiumUnlock.rawValue:
             isPremiumUnlocked = true
-            // 保存到 UserDefaults
             UserDefaults.standard.set(true, forKey: "isPremiumUnlocked")
             
         default:
@@ -193,42 +204,19 @@ class StoreManager: ObservableObject {
         }
     }
     
-    // MARK: - 处理更新
-    private func handleUpdate(_ update: VerificationResult<StoreKit.Transaction>) async {
-        if case .verified(let transaction) = update {
-            await handleVerifiedTransaction(transaction)
-            await transaction.finish()
-        }
-    }
-    
     // MARK: - 检查特定功能是否解锁
     func isFeatureUnlocked(_ feature: PremiumFeature) -> Bool {
-        // 所有高级功能都需要解锁
         return isPremiumUnlocked
     }
 }
 
-// MARK: - 错误类型
-enum StoreError: LocalizedError {
-    case unknown
-    case productNotFound
-    case purchaseFailed
-    
-    var errorDescription: String? {
-        switch self {
-        case .unknown:
-            return "未知错误"
-        case .productNotFound:
-            return "找不到产品"
-        case .purchaseFailed:
-            return "购买失败"
-        }
-    }
-}
+// MARK: - SwiftUI Environment
+import SwiftUI
 
-// MARK: - SwiftUI Environment Key
 private struct StoreManagerKey: EnvironmentKey {
-    @MainActor static let defaultValue = StoreManager()
+    static var defaultValue: StoreManager {
+        return StoreManager()
+    }
 }
 
 extension EnvironmentValues {
@@ -237,5 +225,3 @@ extension EnvironmentValues {
         set { self[StoreManagerKey.self] = newValue }
     }
 }
-
-
