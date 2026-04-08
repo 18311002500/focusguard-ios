@@ -154,7 +154,7 @@ struct SettingsView: View {
             }
             .onAppear {
                 // 检查之前的购买状态
-                Task { await Task { await storeManager.checkPurchases() } }
+                Task { await storeManager.checkPurchases() }
             }
         }
     }
@@ -341,5 +341,6 @@ struct AppLimitsView: View {
         .modelContainer(for: [UserSettings.self], inMemory: true)
         .environmentObject(StoreManager())
 }
+
 
 
