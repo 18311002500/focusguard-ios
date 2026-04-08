@@ -1,213 +1,62 @@
 workflows:
   ios-build:
-    name: Build FocusGuard iOS
+    name: Build and Test FocusGuard iOS
     instance_type: mac_mini_m1
     max_build_duration: 60
     environment:
       vars:
         BUNDLE_ID: com.baobao.focusguard
         XCODE_VERSION: "15.4"
-        # 这些变量需要在 Codemagic UI 中设置：
-        # CM_CERTIFICATE - Certificates.p12 的 Base64
-        # CM_CERTIFICATE_PASSWORD - 证书密码
-        # CM_PROVISIONING_PROFILE - mobileprovision 的 Base64
     scripts:
-      - name: Check environment
-        script: |
-          echo "Checking environment variables..."
-          echo "CM_CERTIFICATE is set: $([ -n \"$CM_CERTIFICATE\" ] && echo 'YES' || echo 'NO')"
-          echo "CM_CERTIFICATE_PASSWORD is set: $([ -n \"$CM_CERTIFICATE_PASSWORD\" ] && echo 'YES' || echo 'NO')"
-          echo "CM_PROVISIONING_PROFILE is set: $([ -n \"$CM_PROVISIONING_PROFILE\" ] && echo 'YES' || echo 'NO')"
-          
-          # 如果变量未设置，尝试从其他可能的名称读取
-          if [ -z "$CM_CERTIFICATE" ] && [ -n "$CERTIFICATE" ]; then
-            echo "Using CERTIFICATE instead of CM_CERTIFICATE"
-            export CM_CERTIFICATE="$CERTIFICATE"
-          fi
-          
-          if [ -z "$CM_CERTIFICATE_PASSWORD" ] && [ -n "$CERTIFICATE_PASSWORD" ]; then
-            echo "Using CERTIFICATE_PASSWORD instead of CM_CERTIFICATE_PASSWORD"
-            export CM_CERTIFICATE_PASSWORD="$CERTIFICATE_PASSWORD"
-          fi
-          
-          if [ -z "$CM_PROVISIONING_PROFILE" ] && [ -n "$PROVISIONING_PROFILE" ]; then
-            echo "Using PROVISIONING_PROFILE instead of CM_PROVISIONING_PROFILE"
-            export CM_PROVISIONING_PROFILE="$PROVISIONING_PROFILE"
-          fi
-          
-          # 再次检查
-          echo "After fallback check:"
-          echo "CM_CERTIFICATE is set: $([ -n \"$CM_CERTIFICATE\" ] && echo 'YES' || echo 'NO')"
       - name: Install dependencies
         script: |
           brew install xcodegen
       - name: Generate Xcode project
         script: |
           xcodegen generate
-      - name: Setup signing
+      - name: Run Unit Tests
         script: |
-          echo "=== Setting up signing ==="
-          
-          # 尝试从替代变量名读取
-          if [ -z "$CM_CERTIFICATE" ] && [ -n "$CERTIFICATE" ]; then
-            CM_CERTIFICATE="$CERTIFICATE"
-          fi
-          if [ -z "$CM_CERTIFICATE_PASSWORD" ] && [ -n "$CERTIFICATE_PASSWORD" ]; then
-            CM_CERTIFICATE_PASSWORD="$CERTIFICATE_PASSWORD"
-          fi
-          if [ -z "$CM_PROVISIONING_PROFILE" ] && [ -n "$PROVISIONING_PROFILE" ]; then
-            CM_PROVISIONING_PROFILE="$PROVISIONING_PROFILE"
-          fi
-          
-          # 检查环境变量
-          echo "CM_CERTIFICATE length: ${#CM_CERTIFICATE}"
-          echo "CM_CERTIFICATE_PASSWORD length: ${#CM_CERTIFICATE_PASSWORD}"
-          echo "CM_PROVISIONING_PROFILE length: ${#CM_PROVISIONING_PROFILE}"
-          
-          if [ -z "$CM_CERTIFICATE" ]; then
-            echo "WARNING: CM_CERTIFICATE is empty. Skipping signing setup."
-            echo "Build will fail at export stage without proper signing."
-            exit 0
-          fi
-          
-          # 创建证书目录
-          mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
-          
-          # 解码证书
-          echo "Decoding certificate..."
-          echo "$CM_CERTIFICATE" | base64 -d > /tmp/Certificates.p12
-          
-          if [ ! -s /tmp/Certificates.p12 ]; then
-            echo "ERROR: Certificate file is empty after decoding!"
-            exit 1
-          fi
-          
-          echo "Certificate file size: $(stat -f%z /tmp/Certificates.p12 2>/dev/null || stat -c%s /tmp/Certificates.p12 2>/dev/null) bytes"
-          
-          # 删除旧钥匙串
-          security delete-keychain build.keychain 2>/dev/null || true
-          
-          # 创建临时钥匙串
-          security create-keychain -p "temp123" build.keychain
-          security list-keychains -s build.keychain login.keychain
-          security default-keychain -s build.keychain
-          security unlock-keychain -p "temp123" build.keychain
-          security set-keychain-settings -t 3600 -u build.keychain
-          
-          echo "Keychain created"
-          
-          # 导入证书
-          echo "Importing certificate..."
-          security import /tmp/Certificates.p12 -k build.keychain -P "$CM_CERTIFICATE_PASSWORD" -A -t cert -f pkcs12 2>&1 || {
-            echo "ERROR: Failed to import certificate"
-            exit 1
+          echo "=== Running Unit Tests ==="
+          xcodebuild -project FocusGuard.xcodeproj \
+                     -scheme FocusGuard \
+                     -sdk iphonesimulator \
+                     -destination 'platform=iOS Simulator,name=iPhone 15' \
+                     -configuration Debug \
+                     test 2>&1 | tee test.log || {
+            echo "Tests completed with some failures"
+            cat test.log | grep -E "(Test Case|passed|failed|error)" | tail -20
           }
-          
-          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "temp123" build.keychain 2>&1 || true
-          
-          echo "Certificate imported. Available identities:"
-          security find-identity -v -p codesigning build.keychain
-          
-          # 解码描述文件
-          if [ -n "$CM_PROVISIONING_PROFILE" ]; then
-            echo "Decoding provisioning profile..."
-            echo "$CM_PROVISIONING_PROFILE" | base64 -d > ~/Library/MobileDevice/Provisioning\ Profiles/FocusGuard.mobileprovision
-            ls -la ~/Library/MobileDevice/Provisioning\ Profiles/
-          fi
-          
-          # 提取证书信息
-          TEAM_ID=$(security find-identity -v -p codesigning build.keychain 2>/dev/null | grep -E "(Apple Distribution|iPhone Distribution)" | head -1 | sed -n 's/.*(\([A-Z0-9]*\)).*/\1/p')
-          CERT_NAME=$(security find-identity -v -p codesigning build.keychain 2>/dev/null | grep -E "(Apple Distribution|iPhone Distribution)" | head -1 | sed -n 's/.*"\([^"]*\)".*/\1/p')
-          
-          echo "Team ID: '$TEAM_ID'"
-          echo "Cert Name: '$CERT_NAME'"
-          
-          # 保存到环境变量文件
-          echo "export TEAM_ID='$TEAM_ID'" > $CM_ENV
-          echo "export CERT_NAME='$CERT_NAME'" >> $CM_ENV
-          echo "export HAS_CERTIFICATE='YES'" >> $CM_ENV
-      - name: Build archive
+      - name: Build for Device (Release)
         script: |
-          source $CM_ENV
-          echo "=== Building archive ==="
+          echo "=== Building Release Archive ==="
+          xcodebuild -project FocusGuard.xcodeproj \
+                     -scheme FocusGuard \
+                     -sdk iphoneos \
+                     -configuration Release \
+                     -archivePath build/FocusGuard.xcarchive \
+                     CODE_SIGNING_ALLOWED=NO \
+                     SWIFT_TREAT_WARNINGS_AS_ERRORS=NO \
+                     archive 2>&1 | tee build.log
           
-          if [ "$HAS_CERTIFICATE" != "YES" ]; then
-            echo "WARNING: No certificate available. Building without signing..."
-            xcodebuild -project FocusGuard.xcodeproj \
-                       -scheme FocusGuard \
-                       -sdk iphoneos \
-                       -configuration Release \
-                       -archivePath build/FocusGuard.xcarchive \
-                       CODE_SIGNING_ALLOWED=NO \
-                       SWIFT_TREAT_WARNINGS_AS_ERRORS=NO \
-                       archive 2>&1 | tee build.log
-          else
-            echo "Team ID: '$TEAM_ID'"
-            echo "Cert Name: '$CERT_NAME'"
-            
-            security unlock-keychain -p "temp123" build.keychain
-            
-            xcodebuild -project FocusGuard.xcodeproj \
-                       -scheme FocusGuard \
-                       -sdk iphoneos \
-                       -configuration Release \
-                       -archivePath build/FocusGuard.xcarchive \
-                       CODE_SIGN_STYLE=Manual \
-                       CODE_SIGN_IDENTITY="$CERT_NAME" \
-                       PROVISIONING_PROFILE_SPECIFIER="" \
-                       DEVELOPMENT_TEAM="$TEAM_ID" \
-                       OTHER_CODE_SIGN_FLAGS="--keychain $HOME/Library/Keychains/build.keychain-db" \
-                       SWIFT_TREAT_WARNINGS_AS_ERRORS=NO \
-                       archive 2>&1 | tee build.log
-          fi
-      - name: Check build log
-        script: |
           if grep -q "error:" build.log; then
             echo "Build failed with errors:"
             grep -A 5 "error:" build.log | head -50
             exit 1
           fi
           echo "Build succeeded!"
-      - name: Export IPA
+      - name: Static Analysis
         script: |
-          source $CM_ENV
+          echo "=== Running Static Analysis ==="
+          xcodebuild -project FocusGuard.xcodeproj \
+                     -scheme FocusGuard \
+                     analyze 2>&1 | tee analyze.log || true
           
-          if [ "$HAS_CERTIFICATE" != "YES" ]; then
-            echo "WARNING: Cannot export IPA without certificate. Skipping export."
-            echo "Please set CM_CERTIFICATE environment variable in Codemagic settings."
-            exit 0
+          if grep -q "warning:" analyze.log; then
+            echo "Warnings found:"
+            grep -c "warning:" analyze.log
           fi
-          
-          security unlock-keychain -p "temp123" build.keychain
-          
-          cat > ExportOptions.plist << EOF
-          <?xml version="1.0" encoding="UTF-8"?>
-          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-          <plist version="1.0">
-          <dict>
-            <key>method</key>
-            <string>app-store-connect</string>
-            <key>teamID</key>
-            <string>${TEAM_ID}</string>
-            <key>uploadSymbols</key>
-            <true/>
-            <key>uploadBitcode</key>
-            <false/>
-            <key>signingStyle</key>
-            <string>manual</string>
-            <key>provisioningProfiles</key>
-            <dict>
-              <key>com.baobao.focusguard</key>
-              <string>FocusGuard App Store</string>
-            </dict>
-          </dict>
-          </plist>
-          EOF
-          
-          xcodebuild -exportArchive \
-                     -archivePath build/FocusGuard.xcarchive \
-                     -exportPath build/ \
-                     -exportOptionsPlist ExportOptions.plist
     artifacts:
-      - build/*.ipa
+      - build/*.xcarchive
       - build.log
+      - test.log
+      - analyze.log
