@@ -7,6 +7,7 @@ workflows:
       vars:
         BUNDLE_ID: com.baobao.focusguard
         XCODE_VERSION: "15.4"
+        DEVELOPMENT_TEAM: ""
       ios_signing:
         distribution_type: app_store
         bundle_identifier: com.baobao.focusguard
@@ -19,11 +20,16 @@ workflows:
           xcodegen generate
       - name: Build archive
         script: |
+          # 从钥匙串获取 Team ID
+          TEAM_ID=$(security find-identity -v -p codesigning | grep "Apple Distribution" | head -1 | sed 's/.*(\([A-Z0-9]*\)).*/\1/')
+          echo "Using Team ID: $TEAM_ID"
+          
           xcodebuild -project FocusGuard.xcodeproj \
                      -scheme FocusGuard \
                      -sdk iphoneos \
                      -configuration Release \
                      -archivePath build/FocusGuard.xcarchive \
+                     DEVELOPMENT_TEAM="$TEAM_ID" \
                      archive
       - name: Export IPA
         script: |
