@@ -6,6 +6,9 @@
 // 需要在 Xcode 中添加 Device Activity Extension target
 //
 
+import Foundation
+import UserNotifications
+
 #if !targetEnvironment(simulator)
 import DeviceActivity
 import FamilyControls
@@ -53,3 +56,4 @@ class DeviceActivityMonitorExtension: DeviceActivityMonitor {
     }
 }
 #endif
+
