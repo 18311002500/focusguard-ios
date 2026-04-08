@@ -108,9 +108,10 @@ class ScreenTimeManager: ObservableObject {
         
         for activity in activities {
             // 检查是否已存在今天的记录
+            let bundleId = activity.bundleIdentifier
             let descriptor = FetchDescriptor<AppUsage>(
                 predicate: #Predicate { usage in
-                    usage.bundleIdentifier == activity.bundleIdentifier &&
+                    usage.bundleIdentifier == bundleId &&
                     usage.date >= today
                 }
             )
@@ -207,3 +208,4 @@ class AppLimitManager: ObservableObject {
         return false
     }
 }
+
