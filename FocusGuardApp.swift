@@ -48,7 +48,7 @@ struct FocusGuardApp: App {
                     ScreenTimeManager.shared.checkAuthorizationStatus()
                     
                     // 检查之前的购买
-                    storeManager.checkPreviousPurchases()
+                    Task { await storeManager.checkPreviousPurchases() }
                 }
         }
         .modelContainer(sharedModelContainer)
@@ -79,3 +79,4 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
         completionHandler([.banner, .sound])
     }
 }
+
