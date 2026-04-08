@@ -89,6 +89,9 @@ struct FocusGuardWidgetEntryView: View {
             SmallWidgetView(entry: entry)
         case .systemMedium:
             MediumWidgetView(entry: entry)
+        case .systemExtraLarge:
+            // 不支持超大尺寸
+            return nil
         case .systemLarge:
             LargeWidgetView(entry: entry)
         case .accessoryCircular:
