@@ -1,0 +1,42 @@
+name: Trigger Codemagic Build
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  trigger-codemagic:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Trigger Codemagic Build
+      env:
+        CODEMAGIC_TOKEN: ${{ secrets.CODEMAGIC_API_TOKEN }}
+        CODEMAGIC_APP_ID: ${{ secrets.CODEMAGIC_APP_ID }}
+      run: |
+        if [ -z "$CODEMAGIC_TOKEN" ] || [ -z "$CODEMAGIC_APP_ID" ]; then
+          echo "Error: CODEMAGIC_API_TOKEN or CODEMAGIC_APP_ID not set"
+          exit 1
+        fi
+        
+        echo "Triggering Codemagic build..."
+        RESPONSE=$(curl -s -X POST \
+          -H "Content-Type: application/json" \
+          -H "x-auth-token: $CODEMAGIC_TOKEN" \
+          https://api.codemagic.io/builds \
+          -d "{
+            \"appId\": \"$CODEMAGIC_APP_ID\",
+            \"workflowId\": \"ios-build\",
+            \"branch\": \"${{ github.ref_name }}\"
+          }")
+        
+        echo "Response: $RESPONSE"
+        
+        # 检查是否成功
+        if echo "$RESPONSE" | grep -q "error"; then
+          echo "Failed to trigger build"
+          exit 1
+        fi
+        
+        echo "Build triggered successfully!"
