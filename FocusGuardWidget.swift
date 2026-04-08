@@ -84,24 +84,25 @@ struct FocusGuardWidgetEntryView: View {
     @Environment(\.widgetFamily) var family
     
     var body: some View {
-        switch family {
-        case .systemSmall:
-            SmallWidgetView(entry: entry)
-        case .systemMedium:
-            MediumWidgetView(entry: entry)
-        case .systemExtraLarge:
-            // 不支持超大尺寸
-            return AnyView(EmptyView())
-        case .systemLarge:
-            LargeWidgetView(entry: entry)
-        case .accessoryCircular:
-            AccessoryCircularView(entry: entry)
-        case .accessoryRectangular:
-            AccessoryRectangularView(entry: entry)
-        case .accessoryInline:
-            AccessoryInlineView(entry: entry)
-        @unknown default:
-            SmallWidgetView(entry: entry)
+        Group {
+            switch family {
+            case .systemSmall:
+                SmallWidgetView(entry: entry)
+            case .systemMedium:
+                MediumWidgetView(entry: entry)
+            case .systemExtraLarge:
+                EmptyView()
+            case .systemLarge:
+                LargeWidgetView(entry: entry)
+            case .accessoryCircular:
+                AccessoryCircularView(entry: entry)
+            case .accessoryRectangular:
+                AccessoryRectangularView(entry: entry)
+            case .accessoryInline:
+                AccessoryInlineView(entry: entry)
+            @unknown default:
+                SmallWidgetView(entry: entry)
+            }
         }
     }
 }
@@ -435,4 +436,5 @@ struct FocusGuardWidget: Widget {
 } timeline: {
     SimpleEntry(date: .now, todayFocusTime: 3600, dailyGoal: 7200, isFocusing: false)
 }
+
 
