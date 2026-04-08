@@ -56,11 +56,11 @@ struct PaywallView: View {
                         if let product = storeManager.products.first {
                             Button {
                                 Task {
-                                    await storeManager.purchase(product)
+                                    await storeManager.purchase()
                                 }
                             } label: {
                                 HStack {
-                                    if storeManager.purchaseState.isLoading {
+                                    if storeManager.isPremiumUnlocked == false {
                                         ProgressView()
                                             .progressViewStyle(CircularProgressViewStyle(tint: .white))
                                     } else {
@@ -81,13 +81,13 @@ struct PaywallView: View {
                                 )
                                 .cornerRadius(16)
                             }
-                            .disabled(storeManager.purchaseState.isLoading)
+                            .disabled(storeManager.isPremiumUnlocked == false)
                         }
                         
                         // 恢复购买按钮
                         Button {
                             Task {
-                                await storeManager.restorePurchases()
+                                await storeManager.restore()
                                 if storeManager.isPremiumUnlocked {
                                     restoreMessage = "购买已恢复！"
                                 } else {
@@ -100,7 +100,7 @@ struct PaywallView: View {
                                 .font(.subheadline)
                                 .foregroundColor(.blue)
                         }
-                        .disabled(storeManager.purchaseState.isLoading)
+                        .disabled(storeManager.isPremiumUnlocked == false)
                     }
                     .padding(.horizontal, 24)
                     
@@ -251,3 +251,4 @@ struct LoadingPriceCard: View {
     PaywallView()
         .environmentObject(StoreManager())
 }
+
