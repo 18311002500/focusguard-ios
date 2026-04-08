@@ -8,6 +8,41 @@
 import Foundation
 import StoreKit
 
+// MARK: - 内购产品类型
+enum PremiumFeature: String, CaseIterable, Hashable {
+    case unlimitedFocus = "unlimited_focus"
+    case appLimits = "app_limits"
+    case dataExport = "data_export"
+    case advancedStats = "advanced_stats"
+    
+    var displayName: String {
+        switch self {
+        case .unlimitedFocus: return "无限专注"
+        case .appLimits: return "应用限制"
+        case .dataExport: return "数据导出"
+        case .advancedStats: return "高级统计"
+        }
+    }
+    
+    var description: String {
+        switch self {
+        case .unlimitedFocus: return "无限制使用专注模式"
+        case .appLimits: return "设置每日应用使用限制"
+        case .dataExport: return "导出您的使用数据为 CSV"
+        case .advancedStats: return "查看详细的周/月统计"
+        }
+    }
+    
+    var icon: String {
+        switch self {
+        case .unlimitedFocus: return "infinity.circle.fill"
+        case .appLimits: return "hourglass.circle.fill"
+        case .dataExport: return "square.and.arrow.up.circle.fill"
+        case .advancedStats: return "chart.bar.fill"
+        }
+    }
+}
+
 // MARK: - 产品 ID
 enum ProductID: String, CaseIterable {
     case premiumUnlock = "com.baobao.focusguard.premium"
@@ -94,5 +129,10 @@ class StoreManager: ObservableObject {
         for await result in StoreKit.Transaction.currentEntitlements {
             await handleTransaction(result)
         }
+    }
+    
+    // MARK: - 检查特定功能是否解锁
+    func isFeatureUnlocked(_ feature: PremiumFeature) -> Bool {
+        return isPremiumUnlocked
     }
 }
