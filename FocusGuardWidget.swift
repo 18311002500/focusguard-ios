@@ -91,7 +91,7 @@ struct FocusGuardWidgetEntryView: View {
             MediumWidgetView(entry: entry)
         case .systemExtraLarge:
             // 不支持超大尺寸
-            return nil
+            return AnyView(EmptyView())
         case .systemLarge:
             LargeWidgetView(entry: entry)
         case .accessoryCircular:
@@ -435,3 +435,4 @@ struct FocusGuardWidget: Widget {
 } timeline: {
     SimpleEntry(date: .now, todayFocusTime: 3600, dailyGoal: 7200, isFocusing: false)
 }
+
