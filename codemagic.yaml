@@ -16,7 +16,7 @@ workflows:
           xcodegen generate
       - name: Setup signing
         script: |
-          echo "Setting up signing..."
+          echo "=== Setting up signing ==="
           
           # 创建证书目录
           mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
@@ -30,6 +30,7 @@ workflows:
           if [ -n "$CM_CERTIFICATE" ]; then
             echo "Decoding certificate..."
             echo "$CM_CERTIFICATE" | base64 -d > /tmp/Certificates.p12
+            ls -la /tmp/Certificates.p12
             
             # 创建临时钥匙串
             security create-keychain -p "temp123" build.keychain
@@ -38,10 +39,11 @@ workflows:
             security set-keychain-settings -t 3600 -u build.keychain
             
             # 导入证书
-            security import /tmp/Certificates.p12 -k build.keychain -P "$CM_CERTIFICATE_PASSWORD" -A -t cert -f pkcs12
-            security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "temp123" build.keychain
+            security import /tmp/Certificates.p12 -k build.keychain -P "$CM_CERTIFICATE_PASSWORD" -A -t cert -f pkcs12 2>&1
+            security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "temp123" build.keychain 2>&1
             
-            echo "Certificate imported"
+            echo "Certificate imported, listing identities:"
+            security find-identity -v -p codesigning build.keychain
           else
             echo "WARNING: CM_CERTIFICATE not set"
           fi
@@ -50,34 +52,44 @@ workflows:
           if [ -n "$CM_PROVISIONING_PROFILE" ]; then
             echo "Decoding provisioning profile..."
             echo "$CM_PROVISIONING_PROFILE" | base64 -d > ~/Library/MobileDevice/Provisioning\ Profiles/FocusGuard.mobileprovision
-            echo "Provisioning profile saved"
             ls -la ~/Library/MobileDevice/Provisioning\ Profiles/
           else
             echo "WARNING: CM_PROVISIONING_PROFILE not set"
           fi
           
-          # 列出可用证书
-          echo "Available certificates:"
+          # 列出所有可用证书
+          echo "=== All available certificates ==="
           security find-identity -v -p codesigning
           
           # 提取 Team ID
-          TEAM_ID=$(security find-identity -v -p codesigning 2>/dev/null | grep "Apple Distribution" | head -1 | sed -n 's/.*(\([A-Z0-9]*\)).*/\1/p')
-          echo "Extracted Team ID: $TEAM_ID"
-          echo "TEAM_ID=$TEAM_ID" >> $CM_ENV
+          TEAM_ID=$(security find-identity -v -p codesigning 2>/dev/null | grep -E "(Apple Distribution|iPhone Distribution)" | head -1 | sed -n 's/.*(\([A-Z0-9]*\)).*/\1/p')
+          CERT_NAME=$(security find-identity -v -p codesigning 2>/dev/null | grep -E "(Apple Distribution|iPhone Distribution)" | head -1 | sed -n 's/.*"\([^"]*\)".*/\1/p')
+          
+          echo "Extracted Team ID: '$TEAM_ID'"
+          echo "Extracted Cert Name: '$CERT_NAME'"
+          
+          # 保存到环境变量文件
+          echo "export TEAM_ID='$TEAM_ID'" > $CM_ENV
+          echo "export CERT_NAME='$CERT_NAME'" >> $CM_ENV
+          echo "export KEYCHAIN_PATH='$HOME/Library/Keychains/build.keychain'" >> $CM_ENV
       - name: Build archive
         script: |
-          # 读取 Team ID
           source $CM_ENV
-          echo "Using Team ID: $TEAM_ID"
-          
-          # 获取证书名称
-          CERT_NAME=$(security find-identity -v -p codesigning 2>/dev/null | grep "Apple Distribution" | head -1 | sed -n 's/.*"\([^"]*\)".*/\1/p')
-          echo "Certificate name: $CERT_NAME"
+          echo "=== Building archive ==="
+          echo "Team ID: '$TEAM_ID'"
+          echo "Cert Name: '$CERT_NAME'"
           
           if [ -z "$TEAM_ID" ]; then
-            echo "ERROR: Team ID is empty. Certificate may not be imported correctly."
+            echo "ERROR: Team ID is empty. Checking keychain..."
+            security list-keychains
+            security find-identity -v -p codesigning
             exit 1
           fi
+          
+          # 确保使用正确的钥匙串
+          security list-keychains -s build.keychain
+          security default-keychain -s build.keychain
+          security unlock-keychain -p "temp123" build.keychain
           
           xcodebuild -project FocusGuard.xcodeproj \
                      -scheme FocusGuard \
@@ -88,6 +100,7 @@ workflows:
                      CODE_SIGN_IDENTITY="$CERT_NAME" \
                      PROVISIONING_PROFILE_SPECIFIER="" \
                      DEVELOPMENT_TEAM="$TEAM_ID" \
+                     OTHER_CODE_SIGN_FLAGS="--keychain $HOME/Library/Keychains/build.keychain" \
                      SWIFT_TREAT_WARNINGS_AS_ERRORS=NO \
                      archive 2>&1 | tee build.log
       - name: Check build log
@@ -130,6 +143,9 @@ workflows:
           cat ExportOptions.plist
       - name: Export IPA
         script: |
+          source $CM_ENV
+          security unlock-keychain -p "temp123" build.keychain
+          
           xcodebuild -exportArchive \
                      -archivePath build/FocusGuard.xcarchive \
                      -exportPath build/ \
