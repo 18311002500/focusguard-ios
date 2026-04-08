@@ -154,7 +154,7 @@ struct SettingsView: View {
             }
             .onAppear {
                 // 检查之前的购买状态
-                storeManager.checkPreviousPurchases()
+                Task { await storeManager.checkPreviousPurchases() }
             }
         }
     }
