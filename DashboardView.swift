@@ -13,9 +13,7 @@ struct DashboardView: View {
     @EnvironmentObject private var screenTimeManager: ScreenTimeManager
     @Query private var settings: [UserSettings]
     @Query(sort: \AppUsage.usageTime, order: .reverse) private var todayUsages: [AppUsage]
-    @Query(filter: #Predicate<FocusSession> { session in
-        session.startTime > Calendar.current.startOfDay(for: Date())
-    }) private var todaySessions: [FocusSession]
+    @Query(sort: \FocusSession.startTime, order: .reverse) private var allSessions: [FocusSession]
     
     @State private var showingPermissionAlert = false
     
@@ -25,6 +23,15 @@ struct DashboardView: View {
     
     var totalScreenTime: TimeInterval {
         todayUsages.reduce(0) { $0 + $1.usageTime }
+    }
+    
+    // 在运行时过滤今日会话
+    var todaySessions: [FocusSession] {
+        let calendar = Calendar.current
+        let startOfDay = calendar.startOfDay(for: Date())
+        return allSessions.filter { session in
+            session.startTime >= startOfDay
+        }
     }
     
     var completedFocusSessions: Int {
