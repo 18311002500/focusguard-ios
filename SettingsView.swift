@@ -110,7 +110,7 @@ struct SettingsView: View {
                         
                         Button {
                             Task {
-                                await storeManager.restorePurchases()
+                                await storeManager.restore()
                                 if storeManager.isPremiumUnlocked {
                                     restoreMessage = "购买已成功恢复！"
                                 } else {
@@ -341,4 +341,5 @@ struct AppLimitsView: View {
         .modelContainer(for: [UserSettings.self], inMemory: true)
         .environmentObject(StoreManager())
 }
+
 
