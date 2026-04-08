@@ -157,7 +157,7 @@ class StoreManager: ObservableObject {
     // MARK: - 检查之前的购买
     func checkPreviousPurchases() {
         Task {
-            for await entitlement in Transaction.currentEntitlements {
+            for await entitlement in await Transaction.currentEntitlements {
                 if case .verified(let transaction) = entitlement {
                     await handleVerifiedTransaction(transaction)
                 }
@@ -193,7 +193,7 @@ class StoreManager: ObservableObject {
     }
     
     // MARK: - 处理更新
-    private func handleUpdate(_ update: Transaction) async {
+    private func handleUpdate(_ update: VerificationResult<Transaction>) async {
         if case .verified(let transaction) = update {
             await handleVerifiedTransaction(transaction)
             await transaction.finish()
