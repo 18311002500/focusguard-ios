@@ -17,6 +17,8 @@ targets:
           - "project.yml"
           - "Package.swift"
           - "temp_certs"
+          - "FocusGuardTests"
+          - "FocusGuardUITests"
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.baobao.focusguard
@@ -26,3 +28,43 @@ targets:
         SUPPORTS_MACCATALYST: NO
         SWIFT_STRICT_CONCURRENCY: minimal
         SWIFT_TREAT_WARNINGS_AS_ERRORS: NO
+  
+  FocusGuardTests:
+    type: bundle.unit-test
+    platform: iOS
+    deploymentTarget: "17.0"
+    sources:
+      - path: FocusGuardTests
+    dependencies:
+      - target: FocusGuard
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.baobao.focusguard.tests
+        SWIFT_VERSION: "5.9"
+        TEST_HOST: "$(BUILT_PRODUCTS_DIR)/FocusGuard.app/FocusGuard"
+        BUNDLE_LOADER: "$(TEST_HOST)"
+  
+  FocusGuardUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    deploymentTarget: "17.0"
+    sources:
+      - path: FocusGuardUITests
+    dependencies:
+      - target: FocusGuard
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.baobao.focusguard.uitests
+        SWIFT_VERSION: "5.9"
+        TEST_TARGET_NAME: FocusGuard
+
+schemes:
+  FocusGuard:
+    build:
+      targets:
+        FocusGuard: all
+    test:
+      targets:
+        - FocusGuardTests
+        - FocusGuardUITests
+      gatherCoverageData: true
