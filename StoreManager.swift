@@ -6,6 +6,7 @@
 //
 
 import Foundation
+import SwiftUI
 import StoreKit
 import SwiftData
 
@@ -236,3 +237,4 @@ extension EnvironmentValues {
         set { self[StoreManagerKey.self] = newValue }
     }
 }
+
