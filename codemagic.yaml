@@ -7,9 +7,6 @@ workflows:
       vars:
         BUNDLE_ID: com.baobao.focusguard
         XCODE_VERSION: "15.4"
-      ios_signing:
-        distribution_type: app_store
-        bundle_identifier: com.baobao.focusguard
     scripts:
       - name: Install dependencies
         script: |
@@ -17,16 +14,36 @@ workflows:
       - name: Generate Xcode project
         script: |
           xcodegen generate
+      - name: Setup signing
+        script: |
+          # 创建证书目录
+          mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
+          
+          # 解码证书
+          if [ -n "$CM_CERTIFICATE" ]; then
+            echo "$CM_CERTIFICATE" | base64 -d > /tmp/Certificates.p12
+            security import /tmp/Certificates.p12 -P "$CM_CERTIFICATE_PASSWORD" -A -t cert -f pkcs12
+          fi
+          
+          # 解码描述文件
+          if [ -n "$CM_PROVISIONING_PROFILE" ]; then
+            echo "$CM_PROVISIONING_PROFILE" | base64 -d > ~/Library/MobileDevice/Provisioning\ Profiles/FocusGuard.mobileprovision
+          fi
       - name: Build archive
         script: |
+          # 获取 Team ID
+          TEAM_ID=$(security find-identity -v -p codesigning | grep "Apple Distribution" | head -1 | sed 's/.*(\([A-Z0-9]*\)).*/\1/')
+          echo "Team ID: $TEAM_ID"
+          
           xcodebuild -project FocusGuard.xcodeproj \
                      -scheme FocusGuard \
                      -sdk iphoneos \
                      -configuration Release \
                      -archivePath build/FocusGuard.xcarchive \
                      CODE_SIGN_STYLE=Manual \
-                     CODE_SIGN_IDENTITY="" \
+                     CODE_SIGN_IDENTITY="Apple Distribution" \
                      PROVISIONING_PROFILE_SPECIFIER="" \
+                     DEVELOPMENT_TEAM="$TEAM_ID" \
                      SWIFT_TREAT_WARNINGS_AS_ERRORS=NO \
                      archive 2>&1 | tee build.log
       - name: Check build log
@@ -36,6 +53,25 @@ workflows:
             grep -A 5 "error:" build.log | head -50
             exit 1
           fi
+          echo "Build succeeded!"
+      - name: Create ExportOptions.plist
+        script: |
+          cat > ExportOptions.plist << EOF
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>method</key>
+            <string>app-store-connect</string>
+            <key>teamID</key>
+            <string>$(security find-identity -v -p codesigning | grep "Apple Distribution" | head -1 | sed 's/.*(\([A-Z0-9]*\)).*/\1/')</string>
+            <key>uploadSymbols</key>
+            <true/>
+            <key>uploadBitcode</key>
+            <false/>
+          </dict>
+          </plist>
+          EOF
       - name: Export IPA
         script: |
           xcodebuild -exportArchive \
@@ -45,9 +81,3 @@ workflows:
     artifacts:
       - build/*.ipa
       - build.log
-    publishing:
-      app_store_connect:
-        api_key: $APPSTORE_ISSUER_ID
-        key_id: $APPSTORE_API_KEY_ID
-        issuer_id: $APPSTORE_ISSUER_ID
-        submit_to_testflight: true
