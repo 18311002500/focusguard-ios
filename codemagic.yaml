@@ -7,9 +7,6 @@ workflows:
       vars:
         BUNDLE_ID: com.baobao.focusguard
         XCODE_VERSION: "15.4"
-      ios_signing:
-        distribution_type: app_store
-        bundle_identifier: com.baobao.focusguard
     scripts:
       - name: Install dependencies
         script: |
@@ -17,9 +14,23 @@ workflows:
       - name: Generate Xcode project
         script: |
           xcodegen generate
-      - name: Install dependencies
+      - name: Set up code signing
         script: |
-          pod install || echo "No Podfile found"
+          # 创建 keychain
+          security create-keychain -p "codemagic" build.keychain
+          security default-keychain -s build.keychain
+          security unlock-keychain -p "codemagic" build.keychain
+          
+          # 导入证书
+          echo "$CM_CERTIFICATE" | base64 --decode > certificate.p12
+          security import certificate.p12 -k build.keychain -P "$CM_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "codemagic" build.keychain
+          
+          # 安装描述文件
+          echo "$CM_PROVISIONING_PROFILE" | base64 --decode > profile.mobileprovision
+          mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
+          UUID=$(grep -a -A1 "UUID" profile.mobileprovision | grep string | sed -n 's/.*<string>\(.*\)<\/string>.*/\1/p')
+          cp profile.mobileprovision ~/Library/MobileDevice/Provisioning\ Profiles/$UUID.mobileprovision
       - name: Build archive
         script: |
           xcodebuild -project FocusGuard.xcodeproj \
@@ -28,11 +39,12 @@ workflows:
                      -configuration Release \
                      -archivePath build/FocusGuard.xcarchive \
                      CODE_SIGN_STYLE=Manual \
+                     CODE_SIGN_IDENTITY="Apple Distribution" \
                      PROVISIONING_PROFILE_SPECIFIER="" \
                      archive
       - name: Export IPA
         script: |
-          cat > ExportOptions.plist << EOF
+          cat > ExportOptions.plist << 'EOF'
           <?xml version="1.0" encoding="UTF-8"?>
           <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
           <plist version="1.0">
@@ -40,12 +52,14 @@ workflows:
             <key>method</key>
             <string>app-store</string>
             <key>teamID</key>
-            <string>$(echo $CM_TEAM_ID)</string>
+            <string>$(security find-identity -v -p codesigning build.keychain | grep "Apple Distribution" | head -1 | sed 's/.*(\([A-Z0-9]*\)).*/\1/')</string>
             <key>provisioningProfiles</key>
             <dict>
               <key>com.baobao.focusguard</key>
               <string>FocusGuard App Store</string>
             </dict>
+            <key>signingStyle</key>
+            <string>manual</string>
           </dict>
           </plist>
           EOF
@@ -58,7 +72,7 @@ workflows:
       - build/*.ipa
     publishing:
       app_store_connect:
-        api_key: $APP_STORE_CONNECT_KEY
-        key_id: $APP_STORE_CONNECT_KEY_ID
-        issuer_id: $APP_STORE_CONNECT_ISSUER_ID
+        api_key: $APPSTORE_ISSUER_ID
+        key_id: $APPSTORE_API_KEY_ID
+        issuer_id: $APPSTORE_ISSUER_ID
         submit_to_testflight: true
