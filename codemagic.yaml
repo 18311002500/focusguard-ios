@@ -7,7 +7,6 @@ workflows:
       vars:
         BUNDLE_ID: com.baobao.focusguard
         XCODE_VERSION: "15.4"
-        DEVELOPMENT_TEAM: ""
       ios_signing:
         distribution_type: app_store
         bundle_identifier: com.baobao.focusguard
