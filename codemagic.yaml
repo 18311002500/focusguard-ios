@@ -21,32 +21,58 @@ workflows:
           # 创建证书目录
           mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
           
-          # 检查环境变量
-          echo "CM_CERTIFICATE set: $([ -n \"$CM_CERTIFICATE\" ] && echo 'YES' || echo 'NO')"
-          echo "CM_CERTIFICATE_PASSWORD set: $([ -n \"$CM_CERTIFICATE_PASSWORD\" ] && echo 'YES' || echo 'NO')"
-          echo "CM_PROVISIONING_PROFILE set: $([ -n \"$CM_PROVISIONING_PROFILE\" ] && echo 'YES' || echo 'NO')"
+          # 检查环境变量（显示长度）
+          echo "CM_CERTIFICATE length: ${#CM_CERTIFICATE}"
+          echo "CM_CERTIFICATE_PASSWORD length: ${#CM_CERTIFICATE_PASSWORD}"
+          echo "CM_PROVISIONING_PROFILE length: ${#CM_PROVISIONING_PROFILE}"
+          
+          if [ -z "$CM_CERTIFICATE" ]; then
+            echo "ERROR: CM_CERTIFICATE is empty!"
+            echo "Please set CM_CERTIFICATE environment variable in Codemagic settings."
+            exit 1
+          fi
+          
+          if [ -z "$CM_CERTIFICATE_PASSWORD" ]; then
+            echo "ERROR: CM_CERTIFICATE_PASSWORD is empty!"
+            exit 1
+          fi
           
           # 解码证书
-          if [ -n "$CM_CERTIFICATE" ]; then
-            echo "Decoding certificate..."
-            echo "$CM_CERTIFICATE" | base64 -d > /tmp/Certificates.p12
-            ls -la /tmp/Certificates.p12
-            
-            # 创建临时钥匙串
-            security create-keychain -p "temp123" build.keychain
-            security default-keychain -s build.keychain
-            security unlock-keychain -p "temp123" build.keychain
-            security set-keychain-settings -t 3600 -u build.keychain
-            
-            # 导入证书
-            security import /tmp/Certificates.p12 -k build.keychain -P "$CM_CERTIFICATE_PASSWORD" -A -t cert -f pkcs12 2>&1
-            security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "temp123" build.keychain 2>&1
-            
-            echo "Certificate imported, listing identities:"
-            security find-identity -v -p codesigning build.keychain
-          else
-            echo "WARNING: CM_CERTIFICATE not set"
+          echo "Decoding certificate..."
+          echo "$CM_CERTIFICATE" | base64 -d > /tmp/Certificates.p12
+          
+          if [ ! -s /tmp/Certificates.p12 ]; then
+            echo "ERROR: Certificate file is empty after decoding!"
+            exit 1
           fi
+          
+          echo "Certificate file size: $(stat -f%z /tmp/Certificates.p12 2>/dev/null || stat -c%s /tmp/Certificates.p12 2>/dev/null) bytes"
+          
+          # 删除旧钥匙串（如果存在）
+          security delete-keychain build.keychain 2>/dev/null || true
+          
+          # 创建临时钥匙串
+          security create-keychain -p "temp123" build.keychain
+          security list-keychains -s build.keychain login.keychain
+          security default-keychain -s build.keychain
+          security unlock-keychain -p "temp123" build.keychain
+          security set-keychain-settings -t 3600 -u build.keychain
+          
+          echo "Keychain created and unlocked"
+          security list-keychains
+          
+          # 导入证书
+          echo "Importing certificate..."
+          security import /tmp/Certificates.p12 -k build.keychain -P "$CM_CERTIFICATE_PASSWORD" -A -t cert -f pkcs12 2>&1 || {
+            echo "ERROR: Failed to import certificate"
+            exit 1
+          }
+          
+          # 允许钥匙串访问
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "temp123" build.keychain 2>&1 || true
+          
+          echo "Certificate imported. Listing identities in build.keychain:"
+          security find-identity -v -p codesigning build.keychain
           
           # 解码描述文件
           if [ -n "$CM_PROVISIONING_PROFILE" ]; then
@@ -57,21 +83,21 @@ workflows:
             echo "WARNING: CM_PROVISIONING_PROFILE not set"
           fi
           
-          # 列出所有可用证书
-          echo "=== All available certificates ==="
-          security find-identity -v -p codesigning
-          
-          # 提取 Team ID
-          TEAM_ID=$(security find-identity -v -p codesigning 2>/dev/null | grep -E "(Apple Distribution|iPhone Distribution)" | head -1 | sed -n 's/.*(\([A-Z0-9]*\)).*/\1/p')
-          CERT_NAME=$(security find-identity -v -p codesigning 2>/dev/null | grep -E "(Apple Distribution|iPhone Distribution)" | head -1 | sed -n 's/.*"\([^"]*\)".*/\1/p')
+          # 提取证书信息
+          TEAM_ID=$(security find-identity -v -p codesigning build.keychain 2>/dev/null | grep -E "(Apple Distribution|iPhone Distribution)" | head -1 | sed -n 's/.*(\([A-Z0-9]*\)).*/\1/p')
+          CERT_NAME=$(security find-identity -v -p codesigning build.keychain 2>/dev/null | grep -E "(Apple Distribution|iPhone Distribution)" | head -1 | sed -n 's/.*"\([^"]*\)".*/\1/p')
           
           echo "Extracted Team ID: '$TEAM_ID'"
           echo "Extracted Cert Name: '$CERT_NAME'"
           
+          if [ -z "$TEAM_ID" ]; then
+            echo "ERROR: Could not extract Team ID from certificate"
+            exit 1
+          fi
+          
           # 保存到环境变量文件
           echo "export TEAM_ID='$TEAM_ID'" > $CM_ENV
           echo "export CERT_NAME='$CERT_NAME'" >> $CM_ENV
-          echo "export KEYCHAIN_PATH='$HOME/Library/Keychains/build.keychain'" >> $CM_ENV
       - name: Build archive
         script: |
           source $CM_ENV
@@ -79,17 +105,9 @@ workflows:
           echo "Team ID: '$TEAM_ID'"
           echo "Cert Name: '$CERT_NAME'"
           
-          if [ -z "$TEAM_ID" ]; then
-            echo "ERROR: Team ID is empty. Checking keychain..."
-            security list-keychains
-            security find-identity -v -p codesigning
-            exit 1
-          fi
-          
-          # 确保使用正确的钥匙串
-          security list-keychains -s build.keychain
-          security default-keychain -s build.keychain
+          # 确保钥匙串已解锁
           security unlock-keychain -p "temp123" build.keychain
+          security list-keychains -s build.keychain login.keychain
           
           xcodebuild -project FocusGuard.xcodeproj \
                      -scheme FocusGuard \
@@ -100,7 +118,7 @@ workflows:
                      CODE_SIGN_IDENTITY="$CERT_NAME" \
                      PROVISIONING_PROFILE_SPECIFIER="" \
                      DEVELOPMENT_TEAM="$TEAM_ID" \
-                     OTHER_CODE_SIGN_FLAGS="--keychain $HOME/Library/Keychains/build.keychain" \
+                     OTHER_CODE_SIGN_FLAGS="--keychain $HOME/Library/Keychains/build.keychain-db" \
                      SWIFT_TREAT_WARNINGS_AS_ERRORS=NO \
                      archive 2>&1 | tee build.log
       - name: Check build log
