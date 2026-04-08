@@ -145,7 +145,7 @@ struct PaywallView: View {
             }
             .onAppear {
                 Task {
-                    await storeManager.requestProducts()
+                    await storeManager.loadProducts()
                 }
             }
         }
