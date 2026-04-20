@@ -46,9 +46,24 @@ workflows:
             security default-keychain -s build.keychain
             security unlock-keychain -p "temp123" build.keychain
             security import /tmp/Certificates.p12 -k build.keychain -P "$CM_CERTIFICATE_PASSWORD" -A -t cert -f pkcs12 2>&1 || true
+            security set-keychain-settings -t 3600 -u build.keychain
+            security unlock-keychain -p "temp123" build.keychain
             
+            # 获取证书信息
             TEAM_ID=$(security find-identity -v -p codesigning 2>/dev/null | grep -E "(Apple Distribution|iPhone Distribution)" | head -1 | sed -n 's/.*(\([A-Z0-9]*\)).*/\1/p')
             CERT_NAME=$(security find-identity -v -p codesigning 2>/dev/null | grep -E "(Apple Distribution|iPhone Distribution)" | head -1 | sed -n 's/.*"\([^"]*\)".*/\1/p')
+            
+            # 获取描述文件名称和UUID
+            PROFILE_NAME=$(security cms -D -i ~/Library/MobileDevice/Provisioning\ Profiles/FocusGuard.mobileprovision 2>/dev/null | grep -A1 "Name" | grep "string" | sed 's/.*<string>\([^<]*\)<.*/\1/' | head -1)
+            PROFILE_UUID=$(security cms -D -i ~/Library/MobileDevice/Provisioning\ Profiles/FocusGuard.mobileprovision 2>/dev/null | grep -A1 "UUID" | grep "string" | sed 's/.*<string>\([^<]*\)<.*/\1/')
+            
+            echo "Team ID: $TEAM_ID"
+            echo "Cert Name: $CERT_NAME"
+            echo "Profile Name: $PROFILE_NAME"
+            echo "Profile UUID: $PROFILE_UUID"
+            
+            # 验证描述文件
+            security cms -D -i ~/Library/MobileDevice/Provisioning\ Profiles/FocusGuard.mobileprovision 2>/dev/null | grep "application-identifier" | head -1
             
             xcodebuild -project FocusGuard.xcodeproj \
                        -scheme FocusGuard \
@@ -57,7 +72,8 @@ workflows:
                        -archivePath build/FocusGuard.xcarchive \
                        CODE_SIGN_STYLE=Manual \
                        CODE_SIGN_IDENTITY="$CERT_NAME" \
-                       PROVISIONING_PROFILE_SPECIFIER="" \
+                       PROVISIONING_PROFILE="$PROFILE_UUID" \
+                       PROVISIONING_PROFILE_SPECIFIER="$PROFILE_NAME" \
                        DEVELOPMENT_TEAM="$TEAM_ID" \
                        SWIFT_TREAT_WARNINGS_AS_ERRORS=NO \
                        archive 2>&1 | tee build.log
@@ -92,6 +108,9 @@ workflows:
           security unlock-keychain -p "temp123" build.keychain
           TEAM_ID=$(security find-identity -v -p codesigning 2>/dev/null | grep -E "(Apple Distribution|iPhone Distribution)" | head -1 | sed -n 's/.*(\([A-Z0-9]*\)).*/\1/p')
           
+          # 获取描述文件名称
+          PROFILE_NAME=$(security cms -D -i ~/Library/MobileDevice/Provisioning\ Profiles/FocusGuard.mobileprovision 2>/dev/null | grep -A1 "Name" | grep "string" | sed 's/.*<string>\([^<]*\)<.*/\1/' | head -1)
+          
           # 创建 ExportOptions.plist
           cat > ExportOptions.plist << EOF
           <?xml version="1.0" encoding="UTF-8"?>
@@ -111,11 +130,14 @@ workflows:
             <key>provisioningProfiles</key>
             <dict>
               <key>com.baobao.focusguard</key>
-              <string>FocusGuard App Store</string>
+              <string>${PROFILE_NAME}</string>
             </dict>
           </dict>
           </plist>
           EOF
+          
+          echo "ExportOptions.plist content:"
+          cat ExportOptions.plist
           
           xcodebuild -exportArchive \
                      -archivePath build/FocusGuard.xcarchive \
