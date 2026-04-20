@@ -4,6 +4,8 @@ workflows:
     instance_type: mac_mini_m1
     max_build_duration: 60
     environment:
+      groups:
+        - focusguard-ios
       vars:
         BUNDLE_ID: com.baobao.focusguard
         XCODE_VERSION: "15.4"
